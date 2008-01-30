@@ -3331,7 +3331,14 @@ function _jsdoc_cron_chdir($enter=false) {
 
   if ($enter) {
     $location = _jsdoc_get_base_path();
-    @chdir(_jsdoc_dir_location());
+    if (!is_dir(_jsdoc_dir_location())){
+        watchdog('jsdoc', _jsdoc_dir_location() . t(' should be a directory'), WATCHDOG_ERROR);
+        return false;
+    }
+    if (!@chdir(_jsdoc_dir_location())) {
+        watchdog('jsdoc', _jsdoc_dir_location() . t(' could not be accessed'), WATCHDOG_ERROR);
+        return false;
+    }
     include_once(_jsdoc_file_location());
   }
   else {
