@@ -66,6 +66,13 @@ function jsdoc_menu($may_cache) {
       'path' => 'node/add/jsdoc_resource',
       'access' => false
     );
+
+    $items[] = array(
+      'path' => 'jsdoc/jsonp',
+      'type' => MENU_CALLBACK,
+      'callback' => 'jsdoc_jsonp',
+      'access' => true
+    );
   }
   else {
     if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
@@ -78,68 +85,94 @@ function jsdoc_menu($may_cache) {
       );
     }
 
-    if (arg(0) == 'jsdoc' && arg(3) == 'resource') {
-      // jsdoc/namespace/'HEAD'/'resource'/resource
+    if (arg(0) == 'jsdoc') {
+      $project = false;
+      $version = false;
+      $resource = false;
+      $name = '';
+      $path = '';
+      if (arg(4)) {
+        // If we have 4 arguments, assume that we've been passed a resource
+        $project = arg(1);
+        $version = arg(2);
+        $resource = str_replace('__', '/', arg(3));
+        $name = arg(4);
+        $path = "jsdoc/$project/$version/" . arg(3) . "/$name";
+      }
+      elseif (arg(3)) {
+        // If we have 3 arguments, assume that we don't have a resource
+        $project = arg(1);
+        $version = arg(2);
+        $name = arg(3);
+        $path = "jsdoc/$project/$version/$name";
+      }
+      elseif (arg(2)) {
+        // If we have 2 arguments, assume that we don't have a resource or project
+        // So basically, we assume that version is more important than project
+        $version = arg(1);
+        $name = arg(2);
+        $path = "jsdoc/$version/$name";
+      }
+      elseif (arg(1)) {
+        // Allow the user to only pass the name
+        $name = arg(1);
+        $path = "jsdoc/$name";
+      }
 
-      $node = jsdoc_resource_node_load(arg(1), arg(2), str_replace('__', '/', arg(4)));
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/resource/' . arg(4),
-        'title' => t('View'),
-        'callback' => 'jsdoc_resource_node_view',
-        'callback arguments' => array($node),
-        'access' => node_access('view', $node),
-        'type' => MENU_CALLBACK,
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/resource/' . arg(4) . '/view',
-        'title' => t('View'),
-        'type' => MENU_DEFAULT_LOCAL_TASK,
-        'weight' => -10
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/resource/' . arg(4) . '/private',
-        'title' => t('View w/ Private'),
-        'callback' => 'jsdoc_resource_node_view',
-        'callback arguments' => array($node),
-        'access' => node_access('view', $node),
-        'weight' => -9,
-        'type' => MENU_LOCAL_TASK
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/resource/' . arg(4) . '/edit',
-        'title' => t('Edit'),
-        'callback' => 'jsdoc_resource_edit_redirect',
-        'callback arguments' => array($node),
-        'access' => node_access('update', $node),
-        'weight' => 1,
-        'type' => MENU_LOCAL_TASK
-      );
+      if ($node = jsdoc_object_node_load($name, $project, $version, $resource)) {
+        $item = array(
+          'path' => $path,
+          'title' => t('View'),
+          'access' => node_access('view', $node),
+          'type' => MENU_CALLBACK
+        );
+        if (is_array($node)) {
+          $item['callback'] = 'jsdoc_variables_node_view';
+          $item['callback arguments'] = array($node);
+        }
+        else {
+          if ($node->type == 'jsdoc_object') {
+            $item['callback'] = 'jsdoc_object_node_view';
+            $item['callback arguments'] = array($node);
+          }
+          else {
+            $item['callback'] = 'jsdoc_variable_node_view';
+            $item['callback arguments'] = array($node);
+          }
+        }
+        $items[] = $item;
+      }
     }
 
-    if (arg(0) == 'jsdoc' && arg(3) == 'object' && arg(4)) {
-      // jsdoc/namespace/'HEAD'/'object'/resource/object
-      if (arg(5) && arg(5) != 'view' && arg(5) != 'edit' && arg(5) != 'private') {
-        $item = arg(4) . '/' . arg(5);
-        $object = $node = jsdoc_object_node_load(arg(1), arg(2), arg(5), str_replace('__', '/', arg(4)));
+    /*
+    if (arg(0) == 'jsdoc' && arg(3)) {
+      // jsdoc/namespace/'HEAD'/resource/object
+      if (arg(4) && arg(4) != 'view' && arg(4) != 'edit' && arg(4) != 'private') {
+        $item = arg(3) . '/' . arg(4);
+        $object = $node = jsdoc_object_node_load(arg(4), arg(1), arg(2), str_replace('__', '/', arg(3)));
       }
-      // jsdoc/namespace/'HEAD'/'object'/object
+      // jsdoc/namespace/'HEAD'/object
       else {
-        $item = arg(4);
-        $object = $node = jsdoc_object_node_load(arg(1), arg(2), arg(4));
+        $item = arg(3);
+        $object = $node = jsdoc_object_node_load(arg(3), arg(1), arg(2));
       }
 
       if (jsdoc_get_variable_object($node)) {
         $object = jsdoc_get_variable_object($node);
       }
-      $items[] = array('path' => 'jsdoc/' . arg(1) . '/' . arg(2) . '/object/' . $item,
+      $items[] = array('path' => 'jsdoc/' . arg(1) . '/' . arg(2) . '/' . $item,
         'title' => t('View'),
         'callback' => 'jsdoc_object_node_view',
         'callback arguments' => array($node),
         'access' => node_access('view', $node),
         'type' => MENU_CALLBACK
       );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/view',
+      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view',
         'title' => t('View'),
         'type' => MENU_DEFAULT_LOCAL_TASK,
         'weight' => -10
       );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/private',
+      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private',
         'title' => t('View w/ Private'),
         'callback' => 'jsdoc_object_node_view',
         'callback arguments' => array($node, null, true),
@@ -147,7 +180,7 @@ function jsdoc_menu($may_cache) {
         'weight' => -9,
         'type' => MENU_LOCAL_TASK
       );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/edit',
+      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/edit',
         'title' => t('Edit'),
         'callback' => 'jsdoc_object_edit_redirect',
         'callback arguments' => array($node),
@@ -155,7 +188,7 @@ function jsdoc_menu($may_cache) {
         'weight' => 1,
         'type' => MENU_LOCAL_TASK
       );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/edit/' . arg(6),
+      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/edit/' . arg(6),
         'title' => t('Edit'),
         'callback' => 'jsdoc_object_edit_redirect',
         'callback arguments' => array($node, arg(6)),
@@ -166,25 +199,25 @@ function jsdoc_menu($may_cache) {
 
       if (jsdoc_get_type($object) == 'Function') {
         if (jsdoc_get_classlike($object) || jsdoc_is_initialized($object)) {
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/view/init',
+          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/init',
             'title' => t('Initialized'),
             'type' => MENU_DEFAULT_LOCAL_TASK,
             'weight' => -10
           );
           if (!jsdoc_is_initialized($object)) {
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/view/normal',
+            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/normal',
               'title' => t('Uninitialized'),
               'callback' => 'jsdoc_object_node_view',
               'callback arguments' => array($node, false),
               'access' => node_access('view', $node),
               'type' => MENU_LOCAL_TASK
             );
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/private/init',
+            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/init',
               'title' => t('Initialized'),
               'type' => MENU_DEFAULT_LOCAL_TASK,
               'weight' => -10
             );
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/private/normal',
+            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/normal',
               'title' => t('Uninitialized'),
               'callback' => 'jsdoc_object_node_view',
               'callback arguments' => array($node, false, true),
@@ -194,24 +227,24 @@ function jsdoc_menu($may_cache) {
           }
         }
         else {
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/view/normal',
+          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/normal',
             'title' => t('Uninitialized'),
             'type' => MENU_DEFAULT_LOCAL_TASK,
             'weight' => -10
           );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/view/init',
+          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/init',
             'title' => t('Initialized'),
             'callback' => 'jsdoc_object_node_view',
             'callback arguments' => array($node, true),
             'access' => node_access('view', $node),
             'type' => MENU_LOCAL_TASK
           );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/private/normal',
+          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/normal',
             'title' => t('Uninitialized'),
             'type' => MENU_DEFAULT_LOCAL_TASK,
             'weight' => -10
           );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/object/' . $item . '/private/init',
+          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/init',
             'title' => t('Initialized'),
             'callback' => 'jsdoc_object_node_view',
             'callback arguments' => array($node, true, true),
@@ -221,6 +254,7 @@ function jsdoc_menu($may_cache) {
         }
       }
     }
+    */
   }
 
   return $items;
@@ -998,8 +1032,8 @@ function jsdoc_object_load($node) {
 
   $node->jsdoc_version = $additions->jsdoc_version;
 
-  $node->jsdoc_full_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/object/' . str_replace('/', '__', db_result(db_query("SELECT title FROM {node_revisions} WHERE vid = %d", $additions->jsdoc_resource_vid))) . '/' . $node->title;
-  $node->jsdoc_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/object/' . $node->title;
+  $node->jsdoc_full_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', db_result(db_query("SELECT title FROM {node_revisions} WHERE vid = %d", $additions->jsdoc_resource_vid))) . '/' . $node->title;
+  $node->jsdoc_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . $node->title;
 
   return $additions;
 }
@@ -1050,7 +1084,7 @@ function jsdoc_variable_form(&$node) {
   foreach ($disambiguations as $disambiguation) {
     jsdoc_get_resource($disambiguation);
     jsdoc_get_provide($disambiguation);
-    $form['jsdoc_disambiguation']['jsdoc_disambiguation']['#options'][$disambiguation->jsdoc_resource->vid] = t('Use the summary and description in ' . $disambiguation->jsdoc_resource->title . ' (' . l('Edit object', 'jsdoc/' . jsdoc_get_project($node)->title . '/' . jsdoc_get_version($node)->title . '/object/' . $node->title . '/edit/' . $disambiguation->jsdoc_resource->vid) . ')');
+    $form['jsdoc_disambiguation']['jsdoc_disambiguation']['#options'][$disambiguation->jsdoc_resource->vid] = t('Use the summary and description in ' . $disambiguation->jsdoc_resource->title . ' (' . l('Edit object', 'jsdoc/' . jsdoc_get_project($node)->title . '/' . jsdoc_get_version($node)->title . '/' . $node->title . '/edit/' . $disambiguation->jsdoc_resource->vid) . ')');
   }
 
   $form['jsdoc_disambiguation']['jsdoc_disambiguation']['#options']['0'] = t('No customization (use default if only one resource)'); 
@@ -1262,13 +1296,15 @@ function jsdoc_get_parameters(&$node) {
     return $node->jsdoc_parameters;
   }
 
-  $node->jsdoc_parameters = array();
-  $query = db_query("SELECT * FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $node->vid);
+  $object = jsdoc_get_variable_object($node);
+
+  $object->jsdoc_parameters = array();
+  $query = db_query("SELECT * FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
   while ($parameter = db_fetch_array($query)) {
     $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['recurring']);
-    $node->jsdoc_parameters[$parameter['name']] = $parameter;
+    $object->jsdoc_parameters[$parameter['name']] = $parameter;
   }
-  return $node->jsdoc_parameters;
+  return $object->jsdoc_parameters;
 }
 
 function jsdoc_get_examples(&$node) {
@@ -1285,11 +1321,17 @@ function jsdoc_get_examples(&$node) {
   return $node->jsdoc_examples;
 }
 
+function jsdoc_get_parent_mixins(&$node) {
+  return jsdoc_get_parents($node)->mixin;
+}
+
 /**
  *
  */
 function jsdoc_get_parents(&$node) {
-  if (isset($node->jsdoc_parents)) return $node->jsdoc_parents;
+  if (isset($node->jsdoc_parents)) {
+    return $node->jsdoc_parents;
+  }
 
   $node->jsdoc_parents = array();
 
@@ -1341,6 +1383,7 @@ function jsdoc_get_parents(&$node) {
     }
   }
 
+  $node->jsdoc_parents = (object)$node->jsdoc_parents;
   return $node->jsdoc_parents;
 }
 
@@ -1416,6 +1459,8 @@ function jsdoc_get_type(&$node) {
     return $node->jsdoc_type;
   }
 
+  $type = '';
+
   if ($node->type == 'jsdoc_variable') {
     $types = array();
     $query = db_query("SELECT j.type FROM {jsdoc_objects} j JOIN {node_revisions} nr ON (nr.vid = j.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND j.version = %d", $node->title, $node->title, jsdoc_get_version($node)->nid);
@@ -1426,14 +1471,18 @@ function jsdoc_get_type(&$node) {
     }
     $types = array_unique($types);
     if (count($types) == 1) {
-      return $node->jsdoc_type = $types[0];
+      $type = $types[0];
     }
     elseif (count($types) > 1) {
-      return $node->jsdoc_type = 'mixed';
+      $type = 'mixed';
     }
   }
 
-  return '';
+  if ($type == 'Function' && jsdoc_get_classlike($node)) {
+    $type = 'Class';
+  }
+
+  return ($node->jsdoc_type = $type);
 }
 
 function jsdoc_get_resource(&$node) {
@@ -1445,14 +1494,46 @@ function jsdoc_get_resource(&$node) {
 }
 
 function jsdoc_get_provide(&$node) {
-  if (is_numeric($node->jsdoc_provide)) {
-    $node->jsdoc_provide = _jsdoc_node_load($node->jsdoc_provide, $node->jsdoc_provide_vid);
+  $object = $node;
+  if ($node->type == 'jsdoc_variable') {
+    $object = jsdoc_get_variable_object($node);
   }
-  return $node->jsdoc_provide;
+  if (is_numeric($object->jsdoc_provide)) {
+    $object->jsdoc_provide = _jsdoc_node_load($object->jsdoc_provide, $object->jsdoc_provide_vid);
+  }
+  return $object->jsdoc_provide;
 }
 
-function jsdoc_load_children(&$node, $with_private=false) {
-  if (isset($node->jsdoc_variables)) return;
+function jsdoc_get_child_instances(&$node, $with_private=false) {
+  return jsdoc_get_children($node, $with_private)->instances;
+}
+
+function jsdoc_get_child_prototypes(&$node, $with_private=false) {
+  return jsdoc_get_children($node, $with_private)->prototypes;
+}
+
+function jsdoc_get_child_variables(&$node, $with_private=false) {
+  return jsdoc_get_children($node, $with_private)->variables;
+}
+
+function jsdoc_get_child_chains(&$node, $with_private=false) {
+  return jsdoc_get_children($node, $with_private)->chains;
+}
+
+function jsdoc_get_child_mixins(&$node, $with_private=false) {
+  return jsdoc_get_children($node, $with_private)->mixins;
+}
+
+function jsdoc_get_children(&$node, $with_private=false) {
+  if (isset($node->jsdoc_variables)) {
+    return (object)array(
+      'instances' => $node->jsdoc_instances,
+      'prototypes' => $node->jsdoc_prototypes,
+      'variables' => $node->jsdoc_variables,
+      'chains' => $node->jsdoc_chains,
+      'mixins' => $node->jsdoc_mixins
+    );
+  }
 
   $node->jsdoc_instances = array();
   $node->jsdoc_prototypes = array();
@@ -1478,13 +1559,13 @@ function jsdoc_load_children(&$node, $with_private=false) {
     $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' " . $with_private . " AND jo.version  = %d AND jo.used != -1 AND jo.new = 0 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, jsdoc_get_version($node)->nid);
     $node->jsdoc_variables = array();
     while ($object = db_fetch_object($query)) {
-      $object = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $object->title);
+      $object = jsdoc_object_node_load($object->title, jsdoc_get_project($node), jsdoc_get_version($node));
       $node->jsdoc_variables[$object->title] = $object;
     }
     uksort($node->jsdoc_variables, 'strnatcasecmp');
   }
   elseif ($node->type == "jsdoc_object") {
-    $query = db_query("SELECT j.type, j.subtype, nr.nid, MAX(nr.vid) FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE nr2.title = '%s' AND BINARY nr2.title = '%s' " . $with_private . " AND j.version = %d GROUP BY nr.nid", $node->title, $node->title, jsdoc_get_version($node)->nid);
+    $query = db_query("SELECT j.type, j.subtype, nr.nid, MAX(nr.vid) AS vid FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE nr2.title = '%s' AND BINARY nr2.title = '%s' " . $with_private . " AND j.version = %d GROUP BY nr.nid, j.type, j.subtype", $node->title, $node->title, jsdoc_get_version($node)->nid);
     while ($join = db_fetch_object($query)) {
       $object = _jsdoc_node_load($join->nid, $join->vid);
       if (!$object->jsdoc_used) {
@@ -1519,6 +1600,8 @@ function jsdoc_load_children(&$node, $with_private=false) {
     uksort($node->jsdoc_mixins['normal'], 'strnatcasecmp');
     uksort($node->jsdoc_mixins['prototype'], 'strnatcasecmp');
   }
+
+  return jsdoc_get_children($node, $with_private);
 }
 
 /**
@@ -1528,8 +1611,6 @@ function jsdoc_resource_load($node) {
   $additions = db_fetch_object(db_query("SELECT version AS jsdoc_version FROM {jsdoc_resources} WHERE vid = %d", $node->vid));
   $version = jsdoc_get_version($node);
   $node->jsdoc_version = $additions->jsdoc_version;
-  $additions->jsdoc_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/resource/' . str_replace('/', '__', $node->title);
-  $additions->jsdoc_anchor = l($node->title, $additions->jsdoc_url);
   return $additions;
 }
 
@@ -1540,7 +1621,7 @@ function jsdoc_variable_load($node) {
   // An object might have a "default" disambiguation package.
   $additions = db_fetch_object(db_query("SELECT version AS jsdoc_version, resource_nid AS jsdoc_resource, resource_vid AS jsdoc_resource_vid, private AS jsdoc_private FROM {jsdoc_variables} WHERE vid = %d", $node->vid));
   $node->jsdoc_version = $additions->jsdoc_version;
-  $additions->jsdoc_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/' . jsdoc_get_version($node)->title . '/object/' . $node->title;
+  $additions->jsdoc_url = 'jsdoc/' . jsdoc_get_project($node)->title . '/' . jsdoc_get_version($node)->title . '/' . $node->title;
 
   return $additions;
 }
@@ -1549,141 +1630,9 @@ function jsdoc_variable_load($node) {
  * Implementation of hook_view().
  */
 function jsdoc_resource_view($node, $teaser = false, $page = false) {
-  $node = node_prepare($node, $teaser);
-
-  $ending = '';
-  if (strpos($node->title, '.js') !== false) {
-    $separator = '/';
-    $ending = '.js';
-  }
-  elseif (strpos($node->title, '/') !== false) {
-    $separator = '/';
-  }
-  else {
-    $separator = '.';
-  }
-  $parts = explode($separator, $node->title);
-  $title_text = "";
-  $end = array_pop($parts);
-  $title = '';
-  $last_part = '';
-  foreach ($parts as $part) {
-    if (!empty($title_text)) {
-      $title_text .= $separator;
-    }
-    $title_text .= $part;
-    $obj = jsdoc_resource_node_load(jsdoc_get_project($node)->nid, jsdoc_get_version($node), $title_text . $ending);
-    if (!empty($title)) {
-      $title .= $separator;
-    }
-    if ($obj) {
-      $title .= l($part, $obj->jsdoc_url);
-    }
-    else {
-      $title .= $part;
-    }
-  }
-  if (!empty($title)) {
-    $title .= $separator;
-  }
-  drupal_set_title($title . $end);
-
-  jsdoc_get_resources($node, array(3, 4));
-
-  $resources = array();
-  $expanded = _jsdoc_resource_expand($node->jsdoc_resources, $node->vid, 0, $resources);
-
-  $depth = 1;
-  while ($depth < 20) {
-    $found = false;
-
-    for ($i = 0; $i < count($expanded); $i++) {
-      $leaf = $expanded[$i];
-      if ($leaf->depth == $depth - 1) {
-        $leaf = _jsdoc_resource_expand($node->jsdoc_resources, $leaf->vid, $depth, $resources);
-        if (!empty($leaf)) {
-          $found = true;
-          array_splice($expanded, $i + 1, 0, $leaf);
-          $i += count($leaf);
-        }
-      }
-    }
-    ++$depth;
-    if (!$found) break;
-  }
-
-  $resources = '';
-  foreach ($expanded as $leaf) {
-    if ($leaf->depth == 0) {
-      $resources .= '<span style="color: red;">';
-    }
-    $resources .= str_pad('', $leaf->depth, '-') . ' ' . $leaf->name . '<br>';
-    if ($leaf->depth == 0) {
-      $resources .= '</span>';
-    }
-  }
-  
-  if (count($expanded)) {
-    $node->content['resources'] = array(
-      '#type' => 'fieldset',
-      '#collapsible' => true,
-      '#collapsed' => true,
-      '#title' => t('Uses') . ' ' . count($expanded) . ' ' . t('resources') . '<br>',
-      '#weight' => 5
-    );
-    $node->content['resources']['resources'] = array(
-      '#type' => 'item',
-      '#value' => $resources
-    );
-  }
-
-  if ($node->teaser) {
-    $node->content['teaser'] = array(
-      '#type' => 'item',
-      '#title' => t('Summary'),
-      '#value' => '<p>' . $node->teaser . '</p>',
-      '#weight' => -24
-    );
-  }
-
-  $children = jsdoc_resource_object_list($node);
-  if (count($children)) {
-    $node->content['jsdoc_children'] = array(
-      '#type' => 'fieldset',
-      '#collapsible' => true,
-      '#collapsed' => true,
-      '#title' => t('Objects in this resource'),
-      '#weight' => 10
-    );
-  }
-  uksort($children, "strnatcmp");
-
-  $i = 0;
-  $last = "";
-  foreach ($children as $child) {
-    $child = _jsdoc_node_load($child->nid, $child->vid);
-    if($last && strpos($child->title, $last) === 0 && strpos($child->title, $node->title . '.') === 0){
-      continue;
-    }
-    $node->content['jsdoc_children']['children'][] = array(
-      '#type' => 'item',
-      '#weight' => $i++,
-      '#value' => $child->jsdoc_formatted['type'] . $child->jsdoc_formatted['separator'] . l($child->title, $child->jsdoc_url, array(), null, null, null, true)
-    );
-    if (strpos($child->title, $node->title . '.') === 0) {
-      $last = $child->title . '.';
-    }
-  }
-
-  if ($node->content['jsdoc_children']) {
-    $node->content['jsdoc_children']['#title'] = ($i == 1) ? t('1 object in this resource') : t($i . ' objects in this resource');
-  }
-
-  if (!$node->content['jsdoc_children']['children']) {
-    unset($node->children['jsdoc_children']);
-  }
-
-  return $node;
+  $node->title = '';
+  $node->teaser = '';
+  $node->body = '';
 }
 
 /**
@@ -1757,7 +1706,7 @@ function _jsdoc_detail_view($node) {
       jsdoc_get_provide($disambiguation);
       $node->content['detail']['jsdoc_disambiguations'][] = array(
         '#type' => 'item',
-        '#value' => l($disambiguation->jsdoc_resource->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/object/' . str_replace('/', '__', $disambiguation->jsdoc_resource->title) . '/' . $node->title)
+        '#value' => l($disambiguation->jsdoc_resource->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $disambiguation->jsdoc_resource->title) . '/' . $node->title)
       );
     }
   }
@@ -2370,7 +2319,7 @@ function jsdoc_resource_node_load($project, $version, $name) {
 /**
  * Custom version of node_load for objects
  */
-function jsdoc_object_node_load($project, $version, $name, $resource = false) {
+function jsdoc_object_node_load($name, $project, $version, $resource = false) {
   $lower_name = strtolower($name);
 
   if ($lower_name == 'bool') {
@@ -2413,6 +2362,7 @@ function jsdoc_object_node_load($project, $version, $name, $resource = false) {
     );    
   }
 
+  // Resolve the project the best that we can
   if (is_object($project) && $project->nid) {
     $project_nid = $project->nid;
   }
@@ -2423,6 +2373,7 @@ function jsdoc_object_node_load($project, $version, $name, $resource = false) {
     $project_nid = jsdoc_project_node_load($project)->nid;
   }
 
+  // Resolve the version the best that we can
   if (is_object($version) && $version->nid) {
     $version_nid = $version->nid;
   }
@@ -2433,24 +2384,219 @@ function jsdoc_object_node_load($project, $version, $name, $resource = false) {
     $version_nid = jsdoc_version_node_load($version, $project_nid)->nid;
   }
 
-  if (is_array($resource) && !empty($resource) && ($node = db_fetch_object(db_query("SELECT n.nid, n.vid FROM {node_revisions} n JOIN {jsdoc_objects} j ON (j.vid = n.vid) WHERE j.used != -1 AND j.new = 0 AND n.title = '%s' AND BINARY n.title = '%s' AND j.provide_vid IN (%s)", $name, $name, implode(',', $resource))))) {
-    return _jsdoc_node_load($node->nid, $node->vid);
-  }
-  elseif ($resource && is_string($resource) && ($resource = db_fetch_object(db_query("SELECT n.nid, n.vid FROM {node_revisions} n JOIN {jsdoc_resources} j ON (j.vid = n.vid) AND n.title = '%s' AND BINARY n.title = '%s' AND j.version = %d", $resource, $resource, $version_nid)))) {
-    if ($node = db_fetch_object(db_query("SELECT n.nid, n.vid FROM {node_revisions} n JOIN {jsdoc_objects} j ON (j.vid = n.vid) WHERE j.used != -1 AND j.new = 0 AND n.title = '%s' AND BINARY n.title = '%s' AND j.resource_vid = %d", $name, $name, $resource->vid))) {
-      $node = _jsdoc_node_load($node->nid, $node->vid);
-      if ($node->jsdoc_used != -1) {
+  // We have a few situations:
+  //    name
+  //    project, name
+  //    project, version, name
+  //    project, version, resource, name
+
+  // If we're missing the version, assume the latest release
+  // If we're missing the project, look up stuff by name
+
+  if (!$project_nid) {
+    // We can't look up the proper version without knowing the project
+    $query = db_query("SELECT nr.nid, MAX(nr.vid) AS vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND n.type = 'jsdoc_variable' GROUP BY nr.nid", $name, $name);
+    if (db_num_rows($query) == 1) {
+      $result = db_fetch_object($query);
+      $node = _jsdoc_node_load($result->nid, $result->vid);
+      if ($object = jsdoc_get_variable_object($node)) {
+        if (!$version) {
+          // In the future, figure out the latest non-HEAD
+          $version = 'HEAD';
+        }
+        $version = jsdoc_version_node_load($version, jsdoc_get_project($object));
+        $versioned_query = db_query("SELECT vid FROM {jsdoc_objects} WHERE nid = %d AND version = %d", $object->nid, $version->nid);
+        if ($result = db_fetch_object($versioned_query)) {
+          return _jsdoc_node_load($object->nid, $result->vid);
+        }
+        else {
+          return $node;
+        }
+      }
+      else {
         return $node;
       }
     }
+    else {
+      $nodes = array();
+      while ($result = db_fetch_object($query)) {
+        $nodes[] = _jsdoc_node_load($result->nid, $result->vid);
+      }
+      return $nodes;
+    }
   }
-  if ($node = db_fetch_object(db_query("SELECT n.nid, n.vid FROM {node_revisions} n JOIN {jsdoc_variables} j ON (j.vid = n.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND j.version = %d", $name, $name, $version_nid))) {
-    return _jsdoc_node_load($node->nid, $node->vid);
+  else {
+    if ($resource) {
+      if (is_object($resource)) {
+        $resources = array($resource->nid);
+      }
+      elseif (is_numeric($resource)) {
+        $resources = array($resource);
+      }
+      elseif (is_array($resource)) {
+        $resources = $resource;
+      }
+      else {
+        $resources = array(jsdoc_resource_node_load($project_nid, $version_nid, $resource)->nid);
+      }
+      $query = db_query("SELECT nr.nid, MAX(nr.vid) AS vid FROM {node_revisions} nr INNER JOIN {jsdoc_objects} j ON (j.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND j.version = %d AND (j.resource_nid IN (%s) OR j.provide_nid IN (%s)) GROUP BY nr.nid", $name, $name, $version_nid, implode(',', $resources), implode(',', $resources));
+    }
+    else {
+      $query = db_query("SELECT nr.nid, MAX(nr.vid) AS vid FROM {node_revisions} nr INNER JOIN {jsdoc_variables} j ON (j.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND j.version = %d GROUP BY nr.nid", $name, $name, $version_nid);
+    }
+
+    $nodes = array();
+    while ($result = db_fetch_object($query)) {
+      $node = _jsdoc_node_load($result->nid, $result->vid);
+      $object = jsdoc_get_variable_object($node);
+      if ($object) {
+        $nodes[] = $object;
+      }
+      else {
+        $nodes[] = $node;
+      }
+    }
+
+    return (count($nodes) > 1) ? $nodes : $nodes[0];
   }
 }
 
+function jsdoc_parameter_weight_sort($a, $b){
+  return ($a['weight'] == $b['weight']) ? 0 : ($a['weight'] < $b['weight']) ? -1 : 1;
+}
+
 /**
- * Path: jsdoc/VERSION/object/NAME
+ * Path: jsdoc/jsonp
+ */
+function jsdoc_jsonp() {
+  include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Encoder.php');
+  include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Zend_Exception.php');
+  include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Exception.php');
+
+  $output = array();
+
+  if (!empty($_GET['name'])) {
+    $like = (empty($_GET['exact'])) ? "LIKE '%%%s%%'" : "= '%s'";
+    if (!empty($_GET['resource'])) {
+      $resource = db_fetch_object(db_query("SELECT nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND n.type = 'jsdoc_resource'", $_GET['resource'], $_GET['resource']));
+      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) JOIN {jsdoc_objects} j ON (j.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_object' AND j.resource_vid = %d", $_GET['name'], $_GET['name'], $resource->vid);
+    }
+    else {
+      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_variable'", $_GET['name'], $_GET['name']);
+    }
+    while ($result = db_fetch_object($query)) {
+      $node = _jsdoc_node_load($result->nid, $result->vid);
+      $item = array(
+        'name' => $node->title,
+        'summary' => jsdoc_get_teaser($node),
+        'type' => jsdoc_get_type($node)
+      );
+      if (jsdoc_get_variable_object($node)) {
+        if (jsdoc_get_type($node) == 'Function'){
+          $parameters = jsdoc_get_parameters($node);
+          if (count($parameters)) {
+            $item['parameters'] = array();
+            usort($parameters, 'jsdoc_parameter_weight_sort');
+            foreach ($parameters as $parameter) {
+              $item['parameters'][] = array(
+                'name' => $parameter['name'],
+                'type' => $parameter['type'],
+                'optional' => round($parameter['optional']),
+                'repeating' => round($parameter['repeating'])
+              );
+            }
+          }
+        }
+      }
+      else {
+        $resources = (jsdoc_get_variable_resources($node));
+        if (db_num_rows($query) > 1 && count($resources) > 1) {
+          $item['resources'] = array();
+          foreach ($resources as $resource) {
+            $item['resources'][] = $resource->title;
+          }
+        }
+      }
+
+      if (!$item['resources'] && db_num_rows($query) == 1) {
+        $item['description'] = jsdoc_get_body($node);
+      }
+
+      $output[] = $item;
+    }
+  }
+
+  print $_GET['callback'] . '(' . Zend_Json_Encoder::encode($output) . ');';
+}
+
+/**
+ * A menu callback
+ */
+function jsdoc_variables_node_view($nodes) {
+  $form = array();
+
+  if (count($nodes)) {
+    drupal_set_title($nodes[0]->title);
+  }
+
+  foreach ($nodes as $node) {
+    $project = jsdoc_get_project($node);
+    $form['projects'][$project->title] = array(
+      '#title' => $project->title,
+      '#type' => 'fieldset'
+    );
+    if (!empty($project->teaser)) {
+      $form['projects'][$project->title]['summary'] = array(
+        '#title' => t('Summary'),
+        '#value' => $project->teaser,
+        '#weight' => 0
+      );
+    }
+    $value = l($node->title, $node->jsdoc_url);
+    if (jsdoc_get_teaser($node)) {
+      $value .= ': ' . jsdoc_get_teaser($node);
+    }
+    $form['projects'][$project->title]['item'] = array(
+      '#value' => $value
+    );
+  }
+
+  return drupal_render_form('jsdoc_variables_form', $form);
+}
+
+/**
+ * A menu callback
+ */
+function jsdoc_variable_node_view($node) {
+  $node = node_prepare($node);
+  if (jsdoc_get_teaser($node)) {
+    $node->content['body']['#value'] = jsdoc_get_teaser($node);
+    if (jsdoc_get_body($node)) {
+      $node->content['body']['#value'] .= '\n\n';
+    }
+  }
+  $node->content['body']['#value'] .= jsdoc_get_body($node);
+
+  $resources = jsdoc_get_variable_resources($node);
+
+  $display_resources = array();
+  foreach ($resources as $resource_value) {
+    $display_resources[] = (object)array(
+      'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
+    );
+  }
+  $node->content['jsdoc_resources'] = array(
+    '#value' => theme('jsdoc_object_resources', $node, $display_resources),
+    '#weight' => 1
+  );
+
+  drupal_set_title(theme('jsdoc_object_title', $node));
+
+  return drupal_render_form('jsdoc_variable_form', $node->content);
+}
+
+/**
+ * A menu callback
  */
 function jsdoc_object_node_view($node, $initialized = null, $allow_private = false) {
   // Test for the basics
@@ -2463,171 +2609,55 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
 
   drupal_add_js('misc/collapse.js');
 
-  $used = $node->jsdoc_used;
-  $title = $node->title;
-  $teaser = $node->teaser;
-  $body = $node->body;
-  $format = $node->format;
-  $object_type = $node->jsdoc_type;
-  $classlike = false;
-  $full_url = $node->jsdoc_url;
+  drupal_set_title(theme('jsdoc_object_title', $node));
 
-  $variables = array();
-  $source = '';
-  $signature = '';
-  $parameters = array();
+  $form = node_prepare($node, false)->content;
 
-  $resources = jsdoc_get_variable_resources($node);
-
-  if ($node->type == 'jsdoc_object') {
-    $object = $node;
-  }
-  elseif ($node->type == 'jsdoc_variable') {
-    $version = jsdoc_get_version($node);
-
-    $teaser = jsdoc_get_teaser($node);
-    $body = jsdoc_get_body($node);
-    $format = jsdoc_get_format($node);
-    $object_type = jsdoc_get_format($node);
-    $classlike = jsdoc_get_classlike($node);
-    $full_url = jsdoc_get_full_url($node);
-
-    $object = jsdoc_get_variable_object($node);
-    if ($object || count($resources)) {
-      $used = 1;
-    }
-    else {
-      $used = 0;
-      $renames = array();
-      // Check for what the deleted items have been renamed to
-      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND jo.version = %d", $node->title, $node->title, $version->nid);
-      while ($object = db_fetch_object($query)) {
-        $renames_query = db_query("SELECT nr.title FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (nr.nid = jo.nid) WHERE jo.nid = %d AND nr.vid != %d AND jo.version = %d GROUP BY nr.nid", $object->nid, $object->vid, $version->nid);
-        while ($rename = db_fetch_object($renames_query)) {
-          if ($rename->title == $node->title) continue;
-          if (!$renamed[$rename->title]) {
-            $renames[$rename->title] = jsdoc_object_node_load(jsdoc_get_project($rename), jsdoc_get_version($rename), $rename->title);
-          }
-        }
-      }
-    }
-  }
-
-  drupal_set_title($title);
-
-  $parents = jsdoc_get_parents($node);
-  if ($node->type == 'jsdoc_variable' && $parents['all']) {
-    $parent = $parents['all'][0];
-  }
-
-  $display = _jsdoc_theme_clone($node);
-  $display->used = $used;
-  $display->teaser = $teaser;
-  $display->body = $body;
-  $display->format = $format;
-  $display->object_type = $object_type ? $object_type : 'Object';
-  $display->classlike = $classlike;
-  $display->full_url = $full_url;
-  $display->formatted = _jsdoc_format_type($display->object_type, $classlike);;
-
-  if (!empty($resources)) {
-    $display = _jsdoc_theme_clone($node);
-    $display->multiple = count($resources) != 1;
-    $display_resources = array();
-    foreach ($resources as $resource_value) {
-      $display_resources[] = (object)array(
-        'anchor' => $resource_value->jsdoc_anchor
-      );
-    }
-    $display->resources = $display_resources;
-    $resources_output = theme('jsdoc_object_resources', $display);
-  }
-
-  if ($object) {
-  }
-  else {
-    if ($display->object_type == 'Function') {
-      theme('jsdoc_function', $display);
-    }
-    else {
-      theme('jsdoc_object', $display);
-    }
-  }
-
-  $classes = array();
-  $functions = array();
-  $fields = array();
-  jsdoc_load_children($node);
-  foreach ($node->jsdoc_variables as $variable_name => $variable) {
-    if (jsdoc_get_type($variable) == 'Function') {
-      if (jsdoc_get_classlike($variable)) {
-        $addto = &$classes;
-      }
-      else {
-        $addto = &$functions;
-      }
-    }
-    else {
-      $addto = &$fields;
-    }
-
-    $display = drupal_clone($variable);
-    $formatted_type = _jsdoc_format_type(jsdoc_get_type($variable), jsdoc_get_classlike($variable));
-    $display->object_type = $formatted_type['type'];
-    if (jsdoc_get_type($variable) && jsdoc_get_type($variable) != 'mixed') {
-      $display->object_type_link = l($formatted_type['type'], jsdoc_object_node_load(jsdoc_get_project($object), jsdoc_get_version($object), jsdoc_get_type($variable))->jsdoc_url) . $formatted_type['separator'];
-    }
-    $display->title_link = l($variable->title, $variable->jsdoc_url);
-    jsdoc_get_teaser($display);
-    $addto[] = _jsdoc_theme_clone($display);
-  }
-
-  $node = node_prepare($node);
-  $node->content['teaser'] = array(
-    '#value' => $node->teaser,
-    '#weight' => -1
+  $form['require'] = array(
+    '#value' => theme('jsdoc_object_require', jsdoc_get_provide($node)),
+    '#weight' => -20
   );
-  if ($resources_output) {
-    $node->content['jsdoc_resources'] = array(
-      '#value' => $resources_output,
-      '#weight' => 1
+
+  $form['resource'] = array(
+    '#value' => theme('jsdoc_object_resource', jsdoc_get_resource($node))
+  );
+
+  $form['body'] = array(
+    '#value' => $node->teaser . $node->body,
+    '#weight' => 0
+  );
+
+  $prototype_chain = jsdoc_get_prototype_chain($node, array(3, 4));
+  if (!empty($prototype_chain)) {
+    $form['prototype_chain'] = array(
+      '#value' => theme('jsdoc_object_prototype_chain', $prototype_chain),
+      '#weight' => 10
     );
   }
 
-  $parent = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $parent);
-  $formatted_type = _jsdoc_format_type($parent->title, jsdoc_get_classlike($parent));
-  $parent->object_type = $formatted_type['type'];
-  $parent->object_type_link = l($formatted_type['type'], $parent->jsdoc_url);
-  $node->content['jsdoc_parent'] = array(
-    '#value' => theme('jsdoc_parent', $parent),
-    '#weight' => 1.5
-  );
+  $parent_mixins_all = jsdoc_get_parent_mixins($node);
+  // TODO: Find a node that has mixins
+  if (!empty($parent_mixins_all)) {
+    $mixins = array();
+    foreach ($parent_mixins_all as $type => $parent_mixins) {
+      foreach ($parent_mixins as $mixin) {
+        if (substr($mixin, -10) == '.prototype') {
+          // I don't think this is a bad assumption
+          $mixin = substr($mixin, 0, -10);
+        }
+        $mixins[] = (object)array(
+          'type' => $type,
+          'node' => jsdoc_object_node_load($mixin, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))
+        );
+      }
+    }
+    $form['parent_mixins'] = array(
+      '#value' => theme('jsdoc_object_mixins', $mixins),
+      '#weight' => 20
+    );
+  }
 
-  $display = _jsdoc_theme_clone($node);
-  $formatted_type = _jsdoc_format_type(jsdoc_get_type($node), jsdoc_get_classlike($node));
-  $display->object_type = $formatted_type['type'];
-  $display->object_type_link = l($formatted_type['type'], jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $formatted_type['type'])->jsdoc_url) . $formatted_type['separator'];
-  $node->content['jsdoc_type'] = array(
-    '#value' => theme('jsdoc_object_type', $display),
-    '#weight' => 2
-  );
-
-  $node->content['jsdoc_fields'] = array(
-    '#value' => theme('jsdoc_field_list', $fields),
-    '#weight' => 3
-  );
-
-  $node->content['jsdoc_functions'] = array(
-    '#value' => theme('jsdoc_function_list', $functions),
-    '#weight' => 4
-  );
-
-  $node->content['jsdoc_classes'] = array(
-    '#value' => theme('jsdoc_class_list', $classes),
-    '#weight' => 5
-  );
-
-  return drupal_render_form('jsdoc_object_form', $node->content);
+  return drupal_render_form('jsdoc_object_form', $form);
 
   /* Reimplement
   if ($node->type == 'jsdoc_variable' && !$node->jsdoc_detail && empty($node->jsdoc_disambiguations) && !count($node->jsdoc_renames)) {
@@ -2649,14 +2679,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
 }
 
 /**
- * Path: jsdoc/VERSION/resource/NAME
- */
-function jsdoc_resource_node_view($node) {
-  return node_show($node, 0);
-}
-
-/**
- * Path: jsdoc/VERSION/object/NAME/edit
+ * Path: jsdoc/VERSION/NAME/edit
  */
 function jsdoc_object_edit_redirect($node, $resource=false) {
   if ($resource) {
@@ -2671,13 +2694,6 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
       }
     }
   }
-  drupal_goto('node/' . $node->nid . '/edit');
-}
-
-/**
- * Path: jsdoc/VERSION/resource/NAME/edit
- */
-function jsdoc_resource_edit_redirect($node) {
   drupal_goto('node/' . $node->nid . '/edit');
 }
 
@@ -3001,17 +3017,21 @@ function _jsdoc_detail_update_joins($node) {
   }
 }
 
+function jsdoc_get_all_provide_nids(&$node, $environments) {
+  return jsdoc_get_resources($node, $environments)->jsdoc_provide_nids;
+}
+
 function jsdoc_get_prototype_chain($node, $environments, $output = array()) {
-  jsdoc_get_parents($node);
-  jsdoc_get_resources($node, $environments);
+  $parents = jsdoc_get_parents($node);
+  $resources = jsdoc_get_resources($node, $environments);
   array_unshift($output, $node);
 
   $prototype = "";
-  if ($node->jsdoc_parents['chain'] && !empty($node->jsdoc_parents['chain']['prototype'])) {
-    $prototype = $node->jsdoc_parents['chain']['prototype'][0];
+  if ($parents->chain && !empty($parents->chain['prototype'])) {
+    $prototype = $parents->chain['prototype'][0];
   }
   if ($prototype) {
-    if ($parent = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $prototype, $node->jsdoc_provide_vids)) {
+    if ($parent = jsdoc_object_node_load($prototype, jsdoc_get_project($node), jsdoc_get_version($node), $node->jsdoc_provide_nids)) {
       return jsdoc_get_prototype_chain($parent, $environments, $output);
     }
   }
@@ -3020,7 +3040,7 @@ function jsdoc_get_prototype_chain($node, $environments, $output = array()) {
     return false;
   }
 
-  array_unshift($output, jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), 'Object'));
+  array_unshift($output, jsdoc_object_node_load('Object', jsdoc_get_project($node), jsdoc_get_version($node)));
   return $output;
 }
 
@@ -3047,10 +3067,13 @@ function jsdoc_get_variable_resources(&$node) {
 
 function jsdoc_get_resources(&$node, $environments) {
   if (isset($node->jsdoc_resources)) {
-    return;
+    return (object)array(
+      'jsdoc_provide_nids' => $node->jsdoc_provide_nids,
+      'jsdoc_resources' => $node->jsdoc_resources
+    );
   }
 
-  $node->jsdoc_provide_vids = array();
+  $node->jsdoc_provide_nids = array();
   $node->jsdoc_resources = array();
 
   if ($node->type == 'jsdoc_object') {
@@ -3086,14 +3109,11 @@ function jsdoc_get_resources(&$node, $environments) {
       $resource_node->jsdoc_resource_depth = -1;
       $resources[] = $resource_node;
     }
-    $node->jsdoc_provide_vids = $object->jsdoc_provide_vids = array_unique($provide_vids);
+    $node->jsdoc_provide_nids = $object->jsdoc_provide_nids = array_unique($provide_vids);
     $node->jsdoc_resources = $object->jsdoc_resources = $resources;
   }
 
-  return (object)array(
-    'jsdoc_provide_vids' => $node->jsdoc_provide_vids,
-    'jsdoc_resources' => $node->jsdoc_resources
-  );
+  return jsdoc_get_resources($node, $environments);
 }
 
 function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
@@ -3391,6 +3411,7 @@ function _jsdoc_markup_code($text, $version, $base=false) {
     }
   }
 
+  _jsdoc_init();
   $highlighter =& new GeSHi($text, 'javascript');
   $highlighter->enable_classes();
   $highlighter->set_overall_style('color: #666;', true);
@@ -3410,7 +3431,7 @@ function _jsdoc_markup_code($text, $version, $base=false) {
       $variable = preg_replace('%<[^>]+>%', '', $match);
       if ($variables[$variable]) {
         $version = _jsdoc_node_load($variables[$variable]);
-        $text = str_replace("%$i%", l($match, 'jsdoc/' . jsdoc_get_project($version)->title . '/' . $version->title . '/object/' . $variable, array('style' => 'border-bottom: 1px dotted #ccc;'), NULL, NULL, FALSE, TRUE), $text);
+        $text = str_replace("%$i%", l($match, 'jsdoc/' . jsdoc_get_project($version)->title . '/' . $version->title . '/' . $variable, array('style' => 'border-bottom: 1px dotted #ccc;'), NULL, NULL, FALSE, TRUE), $text);
       }
     }
   }
@@ -3420,7 +3441,7 @@ function _jsdoc_markup_code($text, $version, $base=false) {
       if (array_key_exists($variable, $variables)) {
         if ($variables[$variable]) {
           $version = _jsdoc_node_load($variables[$variable]);
-          $text = str_replace($match[0], l($match[0], 'jsdoc/' . jsdoc_get_project($version)->title . '/' . $version->title . '/object/' . $variable, array('style' => 'border-bottom: 1px dotted #ccc;'), NULL, NULL, FALSE, TRUE), $text);
+          $text = str_replace($match[0], l($match[0], 'jsdoc/' . jsdoc_get_project($version)->title . '/' . $version->title . '/' . $variable, array('style' => 'border-bottom: 1px dotted #ccc;'), NULL, NULL, FALSE, TRUE), $text);
         }
       }
     }
@@ -3437,6 +3458,7 @@ function _jsdoc_resolve_variable(&$node) {
   $version = jsdoc_get_version($node);
 
   $used = $node->jsdoc_used;
+  $object = false;
   $title = $node->title;
   $teaser = $node->teaser;
   $body = $node->body;
@@ -3465,7 +3487,6 @@ function _jsdoc_resolve_variable(&$node) {
         $object_type = $sumdesc->type;
       }
       $classlike = $sumdesc->classlike;
-      $full_url = str_replace('/object/', '/object/' . str_replace('/', '__', $sumdesc->resource) . '/', $full_url);
     }
     else {
       if ($result->teaser && !$teaser) {
@@ -3494,6 +3515,7 @@ function _jsdoc_resolve_variable(&$node) {
     'body' => $body,
     'format' => $format,
     'object_type' => $object_type,
+    'object' => $object,
     'classlike' => $classlike,
     'full_url' => $full_url
   );
@@ -3515,7 +3537,7 @@ function _jsdoc_markup_text($text, $version, $format = false){
 }
 
 function _jsdoc_init() {
-  include_once('./' . drupal_get_path('module', 'jsdoc') . '/lib/geshi/geshi.php');
+  include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/geshi/geshi.php');
   drupal_add_css(drupal_get_path('module', 'jsdoc') . '/jsdoc.css');
 }
 
@@ -3523,20 +3545,18 @@ function _jsdoc_init() {
 // ===============
 
 /**
- * Theme the list of resources that this object might appear in.
+ * When an object occurs in more than one file, we want
+ * to show this to the user so that they can choose
+ * the likely location until we disambiguate it.
  */
-function theme_jsdoc_object_resources($node) {
+function theme_jsdoc_object_resources($node, $resources) {
   $output = '<div class="jsdoc_object_resources">';
-  $output .= '<fieldset class="collapsible collapsed">';
-  $output .= '<legend><a href="#">Appears in Resource';
-  if ($node->multiple) {
-    $output .= 's';
-  }
-  $output .= '</a></legend>';
+  $output .= '<fieldset>';
+  $output .= '<legend>Appears in Resources</legend>';
   $output .= '<div class="fieldset-wrapper">';
-  foreach ($node->resources as $resource) {
+  foreach ($resources as $resource) {
     $output .= '<div class="form-item">';
-    $output .= $resource->anchor;
+    $output .= $resource->href;
     $output .= '</div>';
   }
   $output .= '</div>';
@@ -3548,44 +3568,102 @@ function theme_jsdoc_object_resources($node) {
 /**
  * Theme the object type block.
  */
-function theme_jsdoc_object_type($node) {
-  return '<div class="form-item"><label>Object Type:</label>' . $node->object_type_link . '</div>';
+function theme_jsdoc_object_title($node) {
+  $parts = explode('.', $node->title);
+  $title_text = "";
+  $end = array_pop($parts);
+  $title = "";
+  $last_part = "";
+  foreach ($parts as $part) {
+    if (!empty($title_text)) {
+      $title_text .= '.';
+    }
+    $title_text .= $part;
+
+    $obj = jsdoc_object_node_load($title_text, jsdoc_get_project($node), jsdoc_get_version($node));
+    if (!empty($title)) {
+      $title .= '.';
+    }
+    if ($obj) {
+      $title .= l($part, $obj->jsdoc_url);
+    }
+    else {
+      $title .= $part;
+    }
+  }
+  if (!empty($title)) {
+    $title .= '.';
+  }
+
+  $title .= $end;
+
+  if (jsdoc_get_type($node)) {
+    $type_node = jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node));
+    if ($type_node) {
+      $title .= ': ' . l(jsdoc_get_type($node), $type_node->jsdoc_url);
+    }
+  }
+
+  return $title;
 }
 
-function theme_jsdoc_function($node) {
-  return 'Function';
+/**
+ * Theme the statement used to require this file
+ */
+function theme_jsdoc_object_require($node) {
+  return '<div class="form-item"><label>To Include:</label>include "' . $node->title . '";</div>';
 }
 
-function theme_jsdoc_object($node) {
-  return 'Object';
+/**
+ * Theme the location this file exists in
+ */
+function theme_jsdoc_object_resource($node) {
+  return '<div class="form-item"><label>Found in:</label> ' . $node->title . '</div>';
 }
 
-function theme_jsdoc_parent($node) {
+/**
+ * Theme the list of mixins for a given object
+ */
+function theme_jsdoc_object_mixins($mixins) {
+  $output = '<div class="form-item"><label>Mixins:</label>';
+  foreach ($mixins as $i => $mixin) {
+    if ($i) {
+      $output .= ', ';
+    }
+    if ($mixin->type != 'prototype') {
+      $output .= '[static] ';
+    }
+    $output .= l($mixin->node->title, $mixin->node->jsdoc_url);
+  }
+  return $output . '</div>';
+}
+
+/**
+ * Theme the prototype chain
+ */
+function theme_jsdoc_object_prototype_chain($chain) {
+  $output = '<div class="form-item"><label>Prototype Chain:</label>' ;
+  foreach ($chain as $i => $node) {
+    if ($i) {
+      $output .= ' -&gt; ';
+    }
+    $output .= l($node->title, $node->jsdoc_url);
+  }
+  return $output .= '</div>';
+}
+
+function theme_jsdoc_object_parent($node) {
   return '<div class="form-item"><label>Parent Object:</label>' . $node->object_type_link . '</div>';
-}
-
-/**
- * Theme a list of nodes that are classlike
- */
-function theme_jsdoc_class_list($nodes) {
-  return theme_jsdoc_field_list($nodes, 'Classes');
-}
-
-/**
- * Theme a list of nodes that are functions
- */
-function theme_jsdoc_function_list($nodes) {
-  return theme_jsdoc_field_list($nodes, 'Functions');
 }
 
 /**
  * Theme a list of nodes that aren't classes or functions
  */
-function theme_jsdoc_field_list($nodes, $title = 'Fields') {
+function theme_jsdoc_object_fields($fields) {
   if (!empty($nodes)) {
     $output = '<div class="jsdoc_field_list">';
     $output .= '<fieldset class="collapsible">';
-    $output .= '<legend><a href="#">' . $title . '</a></legend>';
+    $output .= '<legend><a href="#">' . 'BLAH' . '</a></legend>';
     $output .= '<div class="fieldset-wrapper">';
     foreach ($nodes as $node) {
       $output .= '<div class="form-item">';
@@ -3600,11 +3678,4 @@ function theme_jsdoc_field_list($nodes, $title = 'Fields') {
 
     return $output;
   }
-}
-
-/**
- * Theme all fields for a given object (should only be used if UI is being seriously tweaked).
- */
-function theme_jsdoc_any_list($nodes) {
-  
 }

@@ -15,6 +15,13 @@ function phptemplate_jsdoc_object_type($node) {
   return _phptemplate_callback('jsdoc_object_type', array('node' => $node));
 }
 
+/**
+ * Theme the statement used to require this file
+ */
+function phptemplate_jsdoc_object_require($node) {
+  return _phptemplate_callback('jsdoc_object_require', array('node' => $node));
+}
+
 function phptemplate_jsdoc_function($node) {
   return _phptemplate_callback('jsdoc_function', array('node' => $node));
 }
@@ -23,8 +30,8 @@ function phptemplate_jsdoc_object($node) {
   return _phptemplate_callback('jsdoc_object', array('node' => $node));
 }
 
-function phptemplate_jsdoc_parent($node) {
-  return _phptemplate_callback('jsdoc_parent', array('node' => $node));
+function phptemplate_jsdoc_object_parent($node) {
+  return _phptemplate_callback('jsdoc_object_parent', array('node' => $node));
 }
 
 function phptemplate_jsdoc_class_list($nodes) {
