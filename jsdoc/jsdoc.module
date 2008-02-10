@@ -1024,7 +1024,7 @@ function jsdoc_object_delete(&$node) {
 function jsdoc_object_load($node) {
   // TODO: Deal with alias
   _jsdoc_init();
-  $additions = db_fetch_object(db_query("SELECT jo.type AS jsdoc_type, jo.returns AS jsdoc_returns, jo.updating AS jsdoc_updating, jo.classlike AS jsdoc_classlike, jo.private AS jsdoc_private, jo.private_parent AS jsdoc_private_parent, jo.resource_nid AS jsdoc_resource, jo.resource_vid AS jsdoc_resource_vid, jo.provide_nid AS jsdoc_provide, jo.provide_vid AS jsdoc_provide_vid, jo.initialized AS jsdoc_initialized, jo.used AS jsdoc_used, jo.version AS jsdoc_version, source AS jsdoc_source, jo.resource_vid != n.vid AS has_revisions FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (jo.resource_vid = nr.vid) JOIN {node} n ON (nr.nid = n.nid) WHERE jo.vid = %d", $node->vid));
+  $additions = db_fetch_object(db_query("SELECT jo.type AS jsdoc_raw_type, jo.returns AS jsdoc_returns, jo.updating AS jsdoc_updating, jo.classlike AS jsdoc_classlike, jo.private AS jsdoc_private, jo.private_parent AS jsdoc_private_parent, jo.resource_nid AS jsdoc_resource, jo.resource_vid AS jsdoc_resource_vid, jo.provide_nid AS jsdoc_provide, jo.provide_vid AS jsdoc_provide_vid, jo.initialized AS jsdoc_initialized, jo.used AS jsdoc_used, jo.version AS jsdoc_version, source AS jsdoc_source, jo.resource_vid != n.vid AS has_revisions FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (jo.resource_vid = nr.vid) JOIN {node} n ON (nr.nid = n.nid) WHERE jo.vid = %d", $node->vid));
 
   $additions->jsdoc_used = round($additions->jsdoc_used);
 
@@ -1299,7 +1299,7 @@ function jsdoc_get_parameters(&$node) {
   $object = jsdoc_get_variable_object($node);
 
   $object->jsdoc_parameters = array();
-  $query = db_query("SELECT * FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
+  $query = db_query("SELECT name, type, summary, optional, repeating FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
   while ($parameter = db_fetch_array($query)) {
     $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['recurring']);
     $object->jsdoc_parameters[$parameter['name']] = $parameter;
@@ -1477,9 +1477,19 @@ function jsdoc_get_type(&$node) {
       $type = 'mixed';
     }
   }
+  elseif ($node->type == 'jsdoc_object') {
+    $type = $node->jsdoc_raw_type;
+    unset($node->jsdoc_raw_type);
+  }
 
-  if ($type == 'Function' && jsdoc_get_classlike($node)) {
-    $type = 'Class';
+  if ($type == 'Function') {
+    if (jsdoc_get_classlike($node)) {
+      print $node->title;
+      $type = 'Class';
+    }
+    elseif (count(jsdoc_get_child_instances($node, true)) || count(jsdoc_get_child_prototypes($node, true))) {
+      $type = 'Class';
+    }
   }
 
   return ($node->jsdoc_type = $type);
@@ -1491,6 +1501,10 @@ function jsdoc_get_resource(&$node) {
   }
 
   return $node->jsdoc_resource;
+}
+
+function jsdoc_get_source($node) {
+  return $node->jsdoc_source;
 }
 
 function jsdoc_get_provide(&$node) {
@@ -2322,10 +2336,15 @@ function jsdoc_resource_node_load($project, $version, $name) {
 function jsdoc_object_node_load($name, $project, $version, $resource = false) {
   $lower_name = strtolower($name);
 
+  $override_name = false;
+  $name_override = $name;
+
   if ($lower_name == 'bool') {
     $name = 'Boolean';
   }
-  elseif ($lower_name == 'int') {
+  elseif ($lower_name == 'int' || $lower_name == 'integer') {
+    $override_name = true;
+    $name_override = 'Integer';
     $name = 'Number';
   }
 
@@ -2333,7 +2352,7 @@ function jsdoc_object_node_load($name, $project, $version, $resource = false) {
 
   if (in_array($name, $global_vars)) {
     return (object)array(
-      'title' => $name,
+      'title' => ($override_name) ? $name_override : $name,
       'jsdoc_url' => 'http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Reference:Global_Objects:' . $name
     );
   }
@@ -2569,30 +2588,52 @@ function jsdoc_variables_node_view($nodes) {
  */
 function jsdoc_variable_node_view($node) {
   $node = node_prepare($node);
+
+  $form = $node->content;
+
   if (jsdoc_get_teaser($node)) {
-    $node->content['body']['#value'] = jsdoc_get_teaser($node);
+    $form['body']['#value'] = jsdoc_get_teaser($node);
     if (jsdoc_get_body($node)) {
-      $node->content['body']['#value'] .= '\n\n';
+      $form['body']['#value'] .= '\n\n';
     }
   }
-  $node->content['body']['#value'] .= jsdoc_get_body($node);
+  $form['body']['#value'] .= jsdoc_get_body($node);
 
-  $resources = jsdoc_get_variable_resources($node);
+  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Class') {
+    $resources = jsdoc_get_variable_resources($node);
 
-  $display_resources = array();
-  foreach ($resources as $resource_value) {
-    $display_resources[] = (object)array(
-      'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
+    $display_resources = array();
+    foreach ($resources as $resource_value) {
+      $display_resources[] = (object)array(
+        'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
+      );
+    }
+    $form['jsdoc_resources'] = array(
+      '#value' => theme('jsdoc_object_resources', $node, $display_resources),
+      '#weight' => 10
     );
   }
-  $node->content['jsdoc_resources'] = array(
-    '#value' => theme('jsdoc_object_resources', $node, $display_resources),
-    '#weight' => 1
-  );
+
+  $children = array();
+  $variables = jsdoc_get_child_variables($node);
+  if (!empty($variables)) {
+    uksort($variables, "strnatcasecmp");
+    foreach ($variables as $child) {
+      $children[] = (object)array(
+        'title' => $child->title,
+        'url' => $child->jsdoc_url,
+        'summary' => jsdoc_get_teaser($child)
+      );
+    }
+    $form['children'] = array(
+      '#value' => theme('jsdoc_object_children', $children),
+      '#weight' => 20
+    );
+  }
 
   drupal_set_title(theme('jsdoc_object_title', $node));
 
-  return drupal_render_form('jsdoc_variable_form', $node->content);
+  return drupal_render_form('jsdoc_variable_form', $form);
 }
 
 /**
@@ -2635,25 +2676,146 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     );
   }
 
-  $parent_mixins_all = jsdoc_get_parent_mixins($node);
-  // TODO: Find a node that has mixins
-  if (!empty($parent_mixins_all)) {
-    $mixins = array();
-    foreach ($parent_mixins_all as $type => $parent_mixins) {
-      foreach ($parent_mixins as $mixin) {
-        if (substr($mixin, -10) == '.prototype') {
-          // I don't think this is a bad assumption
-          $mixin = substr($mixin, 0, -10);
+  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Class') {
+    // TODO: jsdoc_get_parameters_themed goes here
+    $parameters = _jsdoc_get_parameters_themed($node);
+
+    if (count($parameters)) {
+      $form['parameters'] = array(
+        '#value' => theme('jsdoc_function_parameters', $parameters),
+        '#weight' => 20
+      );
+    }
+
+    $function = (object)array(
+      'source' => jsdoc_get_source($node),
+      'signature' => _jsdoc_build_function_signature($node, $parameters)
+    );
+    if (count($parameters)) {
+      $function->parameters = $parameters;
+    }
+    $form['function'] = array(
+      '#value' => theme('jsdoc_function_information', $function, $fields),
+      '#weight' => 30
+    );
+  }
+
+  $mixin_chain = array();
+  foreach ($prototype_chain as $prototype) {
+    if ($prototype->title == 'Object') {
+      continue;
+    }
+    $mixin_chain[] = (object)array(
+      'in_prototype_chain' => true,
+      'on_prototype' => true,
+      'node' => $prototype
+    );
+  }
+  for ($i = 0; $i < count($mixin_chain); $i++) {
+    $item = $mixin_chain[$i]->node;
+    if ($mixin_chain_mixins_all = jsdoc_get_parent_mixins($item)) {
+      foreach ($mixin_chain_mixins_all as $type => $mixin_chain_mixins) {
+        if ($type == 'prototype' && is_array($mixin_chain_mixins)) {
+          ksort($mixin_chain_mixins);
+          foreach ($mixin_chain_mixins as $mixin) {
+            if (substr($mixin, -10) == '.prototype') {
+              // I don't think this is a bad assumption
+              $mixin = substr($mixin, 0, -10);
+            }
+            $mixin = (object)array(
+              'in_prototype_chain' => false,
+              'on_prototype' => true,
+              'node' => jsdoc_object_node_load($mixin, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4))),
+            );
+            if ($i > 0 && $mixin_chain[$i - 1]->node->title == $mixin->node->title) {
+              continue;
+            }
+            if ($node->title != $item->title) {
+              $mixin->mixin_from = $item->title;
+            }
+            array_splice($mixin_chain, $i++, 0, array($mixin));
+          }
         }
-        $mixins[] = (object)array(
-          'type' => $type,
-          'node' => jsdoc_object_node_load($mixin, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))
-        );
       }
     }
+  }
+
+  if (!empty($mixin_chain)) {
     $form['parent_mixins'] = array(
-      '#value' => theme('jsdoc_object_mixins', $mixins),
-      '#weight' => 20
+      '#value' => theme('jsdoc_object_mixins', $mixin_chain),
+      '#weight' => 40
+    );
+  }
+
+  $children = array();
+  foreach ($mixin_chain as $mixin) {
+    $mixin = $mixin->node;
+    $children_all = jsdoc_get_children($mixin);
+    foreach ($children_all as $type => $items) {
+      $type = substr($type, 0, -1);
+      if ($type == 'variable') {
+        // TODO: Find something that has this
+        //    and flag it "normal"
+      }
+      foreach ($items as $item) {
+        if (is_object($item)) {
+          $title = $item->title;
+          if ($mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
+            $title = substr($title, strlen($mixin->title) + 1);
+          }
+          if ($children[$title]) {
+            $found = false;
+            foreach ($children[$title]->inheritance as $parent) {
+              if ($parent->title == $mixin->title) {
+                $found = true;
+                break;
+              }
+            }
+            if (!$found) {
+              if ($mixin->title == $node->title) {
+                $children[$title]->override = true;
+              }
+              else {
+                $children[$title]->inheritance[] = (object)array(
+                  'title' => $mixin->title,
+                  'summary' => jsdoc_get_teaser($mixin),
+                  'url' => $mixin->jsdoc_url
+                );
+              }
+            }
+          }
+          else {
+            $children[$title] = (object)array(
+              'title' => $title,
+              'type' => (object)array(
+                'title' => jsdoc_get_type($item),
+                'url' => jsdoc_object_node_load(jsdoc_get_type($item), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))->jsdoc_url
+              ),
+              'inheritance' => array()
+            );
+            if ($mixin->title != $node->title) {
+              $children[$title]->inheritance[] = (object)array(
+                'title' => $mixin->title,
+                'summary' => jsdoc_get_teaser($mixin),
+                'url' => $mixin->jsdoc_url
+              );
+            }
+          }
+          $children[$title]->url = $item->jsdoc_url;
+          if (trim(jsdoc_get_teaser($item)) != '') {
+            $children[$title]->summary = jsdoc_get_teaser($item);
+          }
+          $children[$title]->$type = true;
+        }
+      }
+    }
+  }
+  uksort($children, "strnatcasecmp");
+
+  if (count($children)) {
+    $form['children'] = array(
+      '#value' => theme('jsdoc_object_children', $children),
+      '#weight' => 40
     );
   }
 
@@ -2697,6 +2859,89 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
   drupal_goto('node/' . $node->nid . '/edit');
 }
 
+function _jsdoc_get_parameters_themed(&$node) {
+  if (isset($node->jsdoc_parameters_themed)) {
+    return $node->jsdoc_parameters_themed;
+  }
+
+  $parameters = array();
+
+  foreach (jsdoc_get_parameters($node) as $item) {
+    $parameter = (object)$item['jsdoc_formatted'];
+    $parameter->summary = $item['summary'];
+    $parameter->name = $item['name'];
+    $parameter->types = false;
+
+    $type = $parameter->type;
+    $types = array();
+    if (strpos($type, '|') !== false) {
+      $types = preg_split('%\|+%', $type);
+    }
+    elseif ($type) {
+      $types = array($type);
+    }
+
+    foreach ($types as $type) {
+      $obj = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+      if ($obj) {
+        $type = (object)array(
+          'title' => $obj->title,
+          'summary' => jsdoc_get_teaser($obj),
+          'url' => $obj->jsdoc_url,
+          'a' => l($obj->title, $obj->jsdoc_url),
+          'fields' => false
+        );
+        // It will have an nid if it's local. For example type: Function isn't local
+        if ($obj->nid) {
+          // TODO: Could also be inherited, etc
+          $args = jsdoc_get_child_instances($obj);
+          if (!empty($args)) {
+            $type->fields = array();
+            foreach ($args as $arg) {
+              $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
+
+              $field = (object)array(
+                'title' => $title,
+                'summary' => jsdoc_get_teaser($arg),
+                'url' => $arg->jsdoc_url,
+                'a' => l($title, $arg->jsdoc_url),
+                'types' => false
+              );
+
+              $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
+              foreach ($field_types as $field_type) {
+                $found = 0;
+                $field_type = str_replace('?', '', $field_type, $found);
+                $optional = ($found > 0);
+                $found = 0;
+                $field_type = str_replace('...', '', $field_type, $found);
+                $recurring = ($found > 0);
+
+                $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+                $field->types[] = (object)array(
+                  'title' => $field_obj->title,
+                  'recurring' => $recurring,
+                  'optional' => $optional,
+                  'summary' => jsdoc_get_teaser($field_obj),
+                  'url' => $field_obj->jsdoc_url,
+                  'a' => l($field_obj->title, $field_obj->jsdoc_url)
+                );
+              }
+
+              $type->fields[] = $field;
+            }
+          }
+        }
+        $parameter->types[] = $type;
+      }
+    }
+    unset($parameter->type);
+    $parameters[] = $parameter;
+  }
+
+  return ($node->jsdoc_parameters_themed = $parameters);
+}
+
 function _jsdoc_format_type($type, $classlike = false, $optional = false, $recurring = false) {
   $output = array();
   $name = '';
@@ -2705,17 +2950,14 @@ function _jsdoc_format_type($type, $classlike = false, $optional = false, $recur
     $output['html_type_prefix'] = '/*';
     $output['html_type_suffix'] = '*/';
     $output['type'] = $type;
-    $output['class_type'] = $type; // The only important thing here is that it will differentiate between Function and Class
     if ($type == 'Function' && $classlike) {
-      $output['class_type'] = 'Class';
+      $output['type'] = 'Class';
     }
     if ($optional) {
       $output['type'] .= '?';
-      $output['class_type'] .= '?';
     }
     if ($recurring) {
       $output['type'] .= '...';
-      $output['class_type'] .= '...';
     }
   }
   if ($type) {
@@ -3037,7 +3279,7 @@ function jsdoc_get_prototype_chain($node, $environments, $output = array()) {
   }
 
   if (count($output) == 1) {
-    return false;
+    return array();
   }
 
   array_unshift($output, jsdoc_object_node_load('Object', jsdoc_get_project($node), jsdoc_get_version($node)));
@@ -3155,6 +3397,33 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
   }
 
   return $tree ? $tree : array();
+}
+
+function _jsdoc_build_function_signature($node, $parameters) {
+  if (isset($node->jsdoc_function_signature)) {
+    return $node->jsdoc_function_signature;
+  }
+
+  $signature = 'function (';
+
+  if ($parameters) {
+    foreach ($parameters as $weight => $parameter) {
+      if ($weight) {
+        $signature .= ', ';
+      }
+      $types = array();
+      if ($parameter->types) {
+        foreach ($parameter->types as $type) {
+          $types[] = $type->a;
+        }
+      }
+      $signature .= $parameter->html_type_prefix . implode('|', $types) . $parameter->html_type_suffix . $parameter->separator . $parameter->name;
+    }
+  }
+
+  $signature .= ')';
+
+  return $signature;
 }
 
 function _jsdoc_resource_expand($tree, $child, $depth, &$resources){
@@ -3561,6 +3830,7 @@ function theme_jsdoc_object_resources($node, $resources) {
   }
   $output .= '</div>';
   $output .= '</fieldset>';
+  $output .= '</div>';
 
   return $output;
 }
@@ -3626,16 +3896,68 @@ function theme_jsdoc_object_resource($node) {
  */
 function theme_jsdoc_object_mixins($mixins) {
   $output = '<div class="form-item"><label>Mixins:</label>';
-  foreach ($mixins as $i => $mixin) {
-    if ($i) {
+  $counter = 0;
+  foreach ($mixins as $mixin) {
+    if ($mixin->in_prototype_chain) {
+      continue;
+    }
+    if ($counter) {
       $output .= ', ';
     }
-    if ($mixin->type != 'prototype') {
+    if (!$mixin->on_prototype) {
       $output .= '[static] ';
     }
     $output .= l($mixin->node->title, $mixin->node->jsdoc_url);
+    if ($mixin->mixin_from) {
+      $output .= '<sup>Mixin from: ' . $mixin->mixin_from . '</sup>';
+    }
+
+    ++$counter;
   }
   return $output . '</div>';
+}
+
+function theme_jsdoc_object_children($children) {
+  $output = '<div class="jsdoc_object_children">';
+  $output .= '<fieldset>';
+  $output .= '<legend>Fields</legend>';
+  $output .= '<div class="fieldset-wrapper">';
+  foreach ($children as $child) {
+    $output .= '<div class="form-item">';
+    if ($child->type) {
+      if ($child->type->url) {
+        $output .= '<em>' . l($child->type->title, $child->type->url) . '</em> ';
+      }
+      else {
+        $output .= '<em>' . $child->type->title . '</em> ';
+      }
+    }
+    $output .= l($child->title, $child->url);
+    if ($child->inheritance) {
+      if ($child->override) {
+        $output .= ' <small>(Overrides: ';
+      }
+      else {
+        $output .= ' <small>(Inherited from: ';
+      }
+      foreach ($child->inheritance as $i => $parent) {
+        if ($i) {
+          $output .= ', ';
+        }
+        $output .= l($parent->title, $parent->url);
+      }
+      $output .= ')</small>';
+    }
+    if ($child->summary) {
+      $output .= ': ' . $child->summary;
+    }
+    $output .= '</div>';
+  }
+  $output .= '</div>';
+  $output .= '</fieldset>';
+  $output .= '</div>';
+
+  return $output;
 }
 
 /**
@@ -3657,13 +3979,107 @@ function theme_jsdoc_object_parent($node) {
 }
 
 /**
+ *  Theme the function signature and source.
+ *
+ *  One of the things to note is that we pass fields
+ *  because the constructor isn't always listed as the
+ *  constructor because of the famous dojo.declare
+ */
+function theme_jsdoc_function_information($function, $fields) {
+  $output .= '<div class="jsdoc_function_information">';
+  $output .= '<fieldset class="collapsible">';
+  $output .= '<legend>' . 'Function Information' . '</legend>';
+  $output .= '<div class="fieldset-wrapper">';
+  $output .= '<div class="form-item">';
+  $output .= $function->signature;
+  $output .= '</div>';
+  $output .= '</div>';
+  $output .= '</fieldset>';
+  $output .= '</div>';
+
+  return $output;
+}
+
+function theme_jsdoc_function_parameters($parameters) {
+  $output = '<div class="jsdoc_function_parameters">';
+  $output .= '<fieldset class="collapsible">';
+  $output .= '<legend>' . 'Parameters' . '</legend>';
+  $output .= '<div class="fieldset-wrapper">';
+  foreach ($parameters as $parameter) {
+    $output .= '<div class="form-item"><label>';
+    $types = array();
+    if ($parameter->types) {
+      foreach ($parameter->types as $type) {
+        $types[] = '<em>' . $type->a . '</em>';
+      }
+    }
+    if (count($types)) {
+      $output .= implode('|', $types) . ' ';
+    }
+    $output .= $parameter->name;
+    $output .= '</label>';
+    $output .= $parameter->summary;
+    if (count($types) && $parameter->types[0]->fields) {
+      if ($parameter->summary && $parameter->types[0]->summary) {
+        $output .= '<br><br>';
+      }
+      $output .= $parameter->types[0]->summary;
+      if ($parameter->types[0]->summary) {
+        $output .= '<br>';
+      }
+      foreach ($parameter->types[0]->fields as $i => $field) {
+        if ($i || $parameter->summary) {
+          $output .= '<br>';
+        }
+
+        $field_types = array();
+        $recurring = false;
+        $optional = false;
+        if ($field->types) {
+          foreach ($field->types as $type) {
+            if ($type->recurring) {
+              $recurring = true;
+            }
+            if ($type->optional) {
+              $optional = true;
+            }
+            $field_types[] = '<em>' . $type->a . '</em>';
+          }
+        }
+
+        $output .= '&nbsp; &nbsp; ';
+        if (count($field_types)) {
+          $output .= implode('|', $field_types) . ' ';
+        }
+        $output .= $field->a;
+        if ($recurring) {
+          $output .= ' <small><em>recurring</em></small>';
+        }
+        if ($optional) {
+          $output .= ' <small><em>optional</em></small>';
+        }
+        if ($field->summary) {
+          $output .= ': ' . $field->summary;
+        }
+      }
+    }
+    $output .= '</div>';
+  }
+  $output .= '</div>';
+  $output .= '</fieldset>';
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
  * Theme a list of nodes that aren't classes or functions
  */
 function theme_jsdoc_object_fields($fields) {
   if (!empty($nodes)) {
-    $output = '<div class="jsdoc_field_list">';
+    $output = '<div class="jsdoc_object_fields">';
     $output .= '<fieldset class="collapsible">';
-    $output .= '<legend><a href="#">' . 'BLAH' . '</a></legend>';
+    $output .= '<legend>' . 'BLAH' . '</legend>';
     $output .= '<div class="fieldset-wrapper">';
     foreach ($nodes as $node) {
       $output .= '<div class="form-item">';
@@ -3675,6 +4091,7 @@ function theme_jsdoc_object_fields($fields) {
     }
     $output .= '</div>';
     $output .= '</fieldset>';
+    $output .= '</div>';
 
     return $output;
   }
