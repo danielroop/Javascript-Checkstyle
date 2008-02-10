@@ -98,6 +98,11 @@ function jsdoc_menu($may_cache) {
         $resource = str_replace('__', '/', arg(3));
         $name = arg(4);
         $path = "jsdoc/$project/$version/" . arg(3) . "/$name";
+
+        // TODO: Remove this once search engines have stopped indexing it.
+        if ($resource == 'object') {
+          drupal_goto("jsdoc/$project/$version/$name");
+        }
       }
       elseif (arg(3)) {
         // If we have 3 arguments, assume that we don't have a resource
