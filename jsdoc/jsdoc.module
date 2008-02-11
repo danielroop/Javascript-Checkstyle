@@ -2556,18 +2556,7 @@ function jsdoc_jsonp($batch=false) {
       if (jsdoc_get_variable_object($node)) {
         if (jsdoc_get_type($node) == 'Function'){
           $parameters = jsdoc_get_parameters($node);
-          if (count($parameters)) {
-            $item['parameters'] = array();
-            usort($parameters, 'jsdoc_parameter_weight_sort');
-            foreach ($parameters as $parameter) {
-              $item['parameters'][] = array(
-                'name' => $parameter['name'],
-                'type' => $parameter['type'],
-                'optional' => round($parameter['optional']),
-                'repeating' => round($parameter['repeating'])
-              );
-            }
-          }
+          $item['parameters'] = _jsdoc_get_parameters_themed($node, true);
         }
       }
       else {
@@ -2597,7 +2586,7 @@ function jsdoc_jsonp($batch=false) {
     }
   }
 
-  print $_GET['callback'] . '(' . Zend_Json_Encoder::encode($output) . ');';
+  print $_GET['callback'] . '(' . str_replace('"__className":"stdClass",', '', Zend_Json_Encoder::encode($output)) . ');';
 }
 
 /**
@@ -2911,7 +2900,7 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
   drupal_goto('node/' . $node->nid . '/edit');
 }
 
-function _jsdoc_get_parameters_themed(&$node) {
+function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
   if (isset($node->jsdoc_parameters_themed)) {
     return $node->jsdoc_parameters_themed;
   }
@@ -2923,6 +2912,11 @@ function _jsdoc_get_parameters_themed(&$node) {
     $parameter->summary = $item['summary'];
     $parameter->name = $item['name'];
     $parameter->types = false;
+    if ($cleaned) {
+      unset($parameter->html_type_prefix);
+      unset($parameter->html_type_suffix);
+      unset($parameter->separator);
+    }
 
     $type = $parameter->type;
     $types = array();
@@ -2939,10 +2933,12 @@ function _jsdoc_get_parameters_themed(&$node) {
         $type = (object)array(
           'title' => $obj->title,
           'summary' => jsdoc_get_teaser($obj),
-          'url' => $obj->jsdoc_url,
-          'a' => l($obj->title, $obj->jsdoc_url),
           'fields' => false
         );
+        if (!$cleaned) {
+          $type->url = $obj->jsdoc_url;
+          $type->a = l($obj->title, $obj->jsdoc_url);
+        }
         // It will have an nid if it's local. For example type: Function isn't local
         if ($obj->nid) {
           // TODO: Could also be inherited, etc
@@ -2955,10 +2951,12 @@ function _jsdoc_get_parameters_themed(&$node) {
               $field = (object)array(
                 'title' => $title,
                 'summary' => jsdoc_get_teaser($arg),
-                'url' => $arg->jsdoc_url,
-                'a' => l($title, $arg->jsdoc_url),
                 'types' => false
               );
+              if (!$cleaned) {
+                $field->url = $arg->jsdoc_url;
+                $field->a = l($title, $arg->jsdoc_url);
+              }
 
               $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
               foreach ($field_types as $field_type) {
@@ -2970,14 +2968,17 @@ function _jsdoc_get_parameters_themed(&$node) {
                 $recurring = ($found > 0);
 
                 $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
-                $field->types[] = (object)array(
+                $field_type = (object)array(
                   'title' => $field_obj->title,
                   'recurring' => $recurring,
                   'optional' => $optional,
-                  'summary' => jsdoc_get_teaser($field_obj),
-                  'url' => $field_obj->jsdoc_url,
-                  'a' => l($field_obj->title, $field_obj->jsdoc_url)
+                  'summary' => jsdoc_get_teaser($field_obj)
                 );
+                if (!$cleaned) {
+                  $field_type->url = $field_obj->jsdoc_url;
+                  $field_type->a = l($field_obj->title, $field_obj->jsdoc_url);
+                }
+                $field->types[] = $field_type;
               }
 
               $type->fields[] = $field;
