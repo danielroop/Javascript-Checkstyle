@@ -73,6 +73,14 @@ function jsdoc_menu($may_cache) {
       'callback' => 'jsdoc_jsonp',
       'access' => true
     );
+
+    $items[] = array(
+      'path' => 'jsdoc/jsonp',
+      'type' => MENU_CALLBACK,
+      'callback' => 'jsdoc_jsonp',
+      'callback arguments' => array(true),
+      'access' => true
+    );
   }
   else {
     if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
@@ -1489,7 +1497,6 @@ function jsdoc_get_type(&$node) {
 
   if ($type == 'Function') {
     if (jsdoc_get_classlike($node)) {
-      print $node->title;
       $type = 'Class';
     }
     elseif (count(jsdoc_get_child_instances($node, true)) || count(jsdoc_get_child_prototypes($node, true))) {
@@ -2492,22 +2499,53 @@ function jsdoc_parameter_weight_sort($a, $b){
 /**
  * Path: jsdoc/jsonp
  */
-function jsdoc_jsonp() {
+function jsdoc_jsonp($batch=false) {
   include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Encoder.php');
   include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Zend_Exception.php');
   include_once(_jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/lib/json/Exception.php');
 
-  $output = array();
-
-  if (!empty($_GET['name'])) {
-    $like = (empty($_GET['exact'])) ? "LIKE '%%%s%%'" : "= '%s'";
-    if (!empty($_GET['resource'])) {
-      $resource = db_fetch_object(db_query("SELECT nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND n.type = 'jsdoc_resource'", $_GET['resource'], $_GET['resource']));
-      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) JOIN {jsdoc_objects} j ON (j.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_object' AND j.resource_vid = %d", $_GET['name'], $_GET['name'], $resource->vid);
+  $_JSON = array();
+  foreach (explode('&', getenv('QUERY_STRING')) as $query_string) {
+    list($key, $value) = explode('=', $query_string, 2);
+    $value = urldecode($value);
+    if (isset($_JSON[$key])) {
+      if (!is_array($_JSON[$key])) {
+        $_JSON[$key] = array($_JSON[$key]);
+      }
+      $_JSON[$key][] = $value;
     }
     else {
-      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_variable'", $_GET['name'], $_GET['name']);
+      $_JSON[$key] = $value;
     }
+  }
+
+  $output = array();
+
+  $names = array();
+  if ($batch) {
+    $names = (is_array($_JSON['names'])) ? $_JSON['names'] : array($_JSON['names']);
+  }
+  else {
+    $names = array($_JSON['name']);
+  }
+  foreach ($names as $name) {
+    if (empty($name)) {
+      continue;
+    }
+    $like = (empty($_JSON['exact'])) ? "LIKE '%%%s%%'" : "= '%s'";
+    if (!empty($_JSON['resource'])) {
+      $resource = db_fetch_object(db_query("SELECT nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND n.type = 'jsdoc_resource'", $_JSON['resource'], $_JSON['resource']));
+      $query = db_query("SELECT nr.nid, nr.vid FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) JOIN {jsdoc_objects} j ON (j.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_object' AND j.resource_vid = %d", $name, $name, $resource->vid);
+    }
+    else {
+      $query = db_query("SELECT nr.nid, nr.vid, nr.title FROM {node_revisions} nr JOIN {node} n ON (n.vid = nr.vid) WHERE nr.title $like AND BINARY nr.title $like AND n.type = 'jsdoc_variable'", $name, $name);
+    }
+
+    if ($batch && !empty($_JSON['exact']) && db_num_rows($query) > 1) {
+      // Exact in a batch context means exact in terms of results
+      continue;
+    }
+
     while ($result = db_fetch_object($query)) {
       $node = _jsdoc_node_load($result->nid, $result->vid);
       $item = array(
@@ -2544,6 +2582,15 @@ function jsdoc_jsonp() {
 
       if (!$item['resources'] && db_num_rows($query) == 1) {
         $item['description'] = jsdoc_get_body($node);
+      }
+
+      if ($_JSON['attributes']) {
+        $attributes = (is_array($_JSON['attributes'])) ? $_JSON['attributes'] : array($_JSON['attributes']);
+        foreach ($item as $key => $value) {
+          if ($key != 'name' && !in_array($key, $attributes)) {
+            unset($item[$key]);
+          }
+        }
       }
 
       $output[] = $item;
@@ -3335,28 +3382,28 @@ function jsdoc_get_resources(&$node, $environments) {
 
   if ($object && $provide) {
     $object_provide = jsdoc_get_provide($object);
-    $resource_tree = _jsdoc_get_tree($environments, $provide->vid);
-    $provide_vids = array();
+    $resource_tree = _jsdoc_get_tree($environments, $provide->nid);
+    $provide_nids = array();
     $resources = array();
     foreach ($resource_tree as $resource) {
-      $provide_vids[] = $resource->vid;
+      $provide_nids[] = $resource->nid;
       $resource_node = _jsdoc_node_load($resource->nid, $resource->vid);
       $resource_node->jsdoc_resource_depth = $resource->depth;
       $resources[] = $resource_node;
     }
-    if ($provide && !in_array($provide->vid, $provide_vids)) {
-      $provide_vids[] = $provide->vid;
+    if ($provide && !in_array($provide->nid, $provide_nids)) {
+      $provide_nids[] = $provide->nid;
       $resource_node = _jsdoc_node_load($provide->nid, $provide->vid);
       $resource_node->jsdoc_resource_depth = -1;
       $resources[] = $resource_node;
     }
-    if ($object_provide->vid && !in_array($object_provide->vid, $provide_vids)) {
-      $provide_vids[] = $object_provide->vid;
+    if ($object_provide->nid && !in_array($object_provide->nid, $provide_nids)) {
+      $provide_nids[] = $object_provide->nid;
       $resource_node = _jsdoc_node_load($object_provide->nid, $object_provide->vid);
       $resource_node->jsdoc_resource_depth = -1;
       $resources[] = $resource_node;
     }
-    $node->jsdoc_provide_nids = $object->jsdoc_provide_nids = array_unique($provide_vids);
+    $node->jsdoc_provide_nids = $object->jsdoc_provide_nids = array_unique($provide_nids);
     $node->jsdoc_resources = $object->jsdoc_resources = $resources;
   }
 
@@ -4033,9 +4080,7 @@ function theme_jsdoc_function_parameters($parameters) {
         $output .= '<br>';
       }
       foreach ($parameter->types[0]->fields as $i => $field) {
-        if ($i || $parameter->summary) {
-          $output .= '<br>';
-        }
+        $output .= '<br>';
 
         $field_types = array();
         $recurring = false;
