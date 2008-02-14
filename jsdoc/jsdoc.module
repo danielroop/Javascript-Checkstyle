@@ -437,6 +437,13 @@ function jsdoc_cron() {
       db_query("UPDATE {jsdoc_cache} SET used = 0");
       foreach (jsdoc_projects() as $project) {
         $version = jsdoc_version_node_load('HEAD', $project);
+        $query = db_query("SELECT vid FROM {jsdoc_resources} WHERE used = 0");
+        while ($result = db_fetch_object($query)) {
+          $object_query = db_query("SELECT MAX(vid) AS vid FROM {jsdoc_objects} WHERE resource_vid = %d OR provide_vid = %d GROUP BY nid");
+          if ($vid = db_result($object_query)) {
+            db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $vid);
+          }
+        }
         db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
       }
       $files = call_user_func(_jsdoc_base() . '_get_files');
@@ -592,11 +599,10 @@ function jsdoc_cron() {
       }
 
       // TODO: Delete items from cache
-      if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
+      if (!db_result(db_query("SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
         // If all items are used (typically happens the first pass), then none of them are new.
         // We can do this because if nothing is missing, then all then new things are really new.
         db_query("UPDATE {jsdoc_objects} SET new = 0");
-        db_query("UPDATE {jsdoc_resources} SET new = 0");
       }
     }
   }
@@ -3477,10 +3483,10 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
     $result = db_query("SELECT j.vid, j.nid, j.parent_vid, j.parent_nid, nr.title AS name FROM {jsdoc_resource_hierarchy} j JOIN {node_revisions} nr ON (j.vid = nr.vid) WHERE j.tid IN (%s) GROUP BY j.vid, j.parent_vid, BINARY nr.title", implode(', ', $environments));
     while ($term = db_fetch_object($result)) {
       if ($term->parent_vid) {
-        $children[$term->parent_vid][] = $term->vid;
-        $parents[$term->vid][] = array($term->parent_nid, $term->parent_vid);
+        $children[$term->parent_nid][] = $term->nid;
+        $parents[$term->nid][] = array($term->parent_nid, $term->parent_vid);
       }
-      $terms[$term->vid] = $term;
+      $terms[$term->nid] = $term;
     }
   }
 
@@ -3640,7 +3646,7 @@ function _jsdoc_cron_validate() {
 }
 
 function _jsdoc_cron_validate_include() {
-  if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
+  if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
     watchdog('jsdoc', t('Update code changes before running cron'), WATCHDOG_ERROR);
     return false;
   }
