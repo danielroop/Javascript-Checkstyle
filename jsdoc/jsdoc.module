@@ -411,7 +411,18 @@ function jsdoc_cron() {
 
   // Validate the stuff added in the newly included file
   if (_jsdoc_cron_validate_include()) {
-    $files = call_user_func(_jsdoc_base() . '_get_files');
+    $files = variable_get('jsdoc_cron_files', array());
+    if (!empty($files)) {
+      call_user_func(_jsdoc_base() . '_get_files');
+      print count($files) . ' files left<br>';
+    }else{
+      db_query("UPDATE {jsdoc_cache} SET used = 0");
+      foreach (jsdoc_projects() as $project) {
+        $version = jsdoc_version_node_load('HEAD', $project);
+        db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
+      }
+      $files = call_user_func(_jsdoc_base() . '_get_files');
+    }
     if (!is_array($files)) {
       watchdog('jsdoc', _jsdoc_base() . '_get_files' . t(' does not return an array in ') . _jsdoc_file_location(), WATCHDOG_ERROR);
     }
@@ -428,16 +439,18 @@ function jsdoc_cron() {
       }
       variable_set('jsdoc_cron_time', time());
 
-      db_query("UPDATE {jsdoc_cache} SET used = 0");
-      foreach (jsdoc_projects() as $project) {
-        $version = jsdoc_version_node_load('HEAD', $project);
-        db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
-        db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
-      }
-      unset($project);
-      unset($version);
-
+      $count = 0;
+      $limit = 25;
       foreach ($files as $list) {
+        if($count == $limit){
+          if(count($files) <= $limit){
+            variable_set('jsdoc_cron_files', array());
+          }else{
+            variable_set('jsdoc_cron_files', array_slice($files, $limit));
+          }
+          break;
+        }
+        ++$count;
         list($namespace, $file_name) = $list;
         unset($list);
         unset($contents);
@@ -457,6 +470,7 @@ function jsdoc_cron() {
             file_put_contents($cache_dir . $cache->cid, serialize($contents));
           }
           else {
+            print 'cache hit ' . $cache->filepath . '<br>';
             db_query("UPDATE {jsdoc_cache} SET used = 1 WHERE namespace = '%s' AND filepath = '%s'", $namespace, $file_name);
             $contents = unserialize(file_get_contents($cache_dir . $cache->cid));
           }
@@ -472,6 +486,12 @@ function jsdoc_cron() {
           // Create an actual node representation for the resource that this file provides.
           $provides_node = _jsdoc_resource_get_or_create($contents['#provides'], $namespace);
           $resource_node = _jsdoc_resource_get_or_create($contents['#resource'], $namespace);
+
+          db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE used = 1 AND version = %d AND resource_vid = %d", $version->nid, $resource_node->vid);
+
+          unset($project);
+          unset($version);
+
           db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $provides_node->vid);
           db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $resource_node->vid);
 
