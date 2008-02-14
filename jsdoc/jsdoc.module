@@ -412,6 +412,7 @@ function jsdoc_cron() {
   // Validate the stuff added in the newly included file
   if (_jsdoc_cron_validate_include()) {
     $files = variable_get('jsdoc_cron_files', array());
+    $limit = 25;
     if (!empty($files)) {
       call_user_func(_jsdoc_base() . '_get_files');
       print count($files) . ' files left<br>';
@@ -423,6 +424,13 @@ function jsdoc_cron() {
       }
       $files = call_user_func(_jsdoc_base() . '_get_files');
     }
+
+    if(count($files) <= $limit){
+      variable_set('jsdoc_cron_files', array());
+    }else{
+      variable_set('jsdoc_cron_files', array_slice($files, $limit));
+    }
+
     if (!is_array($files)) {
       watchdog('jsdoc', _jsdoc_base() . '_get_files' . t(' does not return an array in ') . _jsdoc_file_location(), WATCHDOG_ERROR);
     }
@@ -440,14 +448,8 @@ function jsdoc_cron() {
       variable_set('jsdoc_cron_time', time());
 
       $count = 0;
-      $limit = 25;
       foreach ($files as $list) {
         if($count == $limit){
-          if(count($files) <= $limit){
-            variable_set('jsdoc_cron_files', array());
-          }else{
-            variable_set('jsdoc_cron_files', array_slice($files, $limit));
-          }
           break;
         }
         ++$count;
