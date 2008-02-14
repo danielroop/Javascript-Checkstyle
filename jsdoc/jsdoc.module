@@ -389,6 +389,23 @@ function jsdoc_search_validate($form_id, $form_values, $form) {
   form_set_value($form['basic']['inline']['processed_keys'], trim($keys));
 }
 
+function _jsdoc_cron_timeout(){
+  static $start;
+  static $count;
+  if (!$start) {
+    $start = time();
+    return false;
+  }
+  ++$count;
+  $delta = time() - $start;
+  $avg = $delta / $count;
+  $estimate = $delta + $avg;
+  if ($estimate > 30) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Implementation of hook_cron().
  *
@@ -408,11 +425,11 @@ function jsdoc_cron() {
 
   // Use the configuration settings to switch directories, and load the plugin file
   _jsdoc_cron_chdir(true);
+  _jsdoc_cron_timeout();
 
   // Validate the stuff added in the newly included file
   if (_jsdoc_cron_validate_include()) {
     $files = variable_get('jsdoc_cron_files', array());
-    $limit = 25;
     if (!empty($files)) {
       call_user_func(_jsdoc_base() . '_get_files');
       print count($files) . ' files left<br>';
@@ -423,12 +440,6 @@ function jsdoc_cron() {
         db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
       }
       $files = call_user_func(_jsdoc_base() . '_get_files');
-    }
-
-    if(count($files) <= $limit){
-      variable_set('jsdoc_cron_files', array());
-    }else{
-      variable_set('jsdoc_cron_files', array_slice($files, $limit));
     }
 
     if (!is_array($files)) {
@@ -448,10 +459,19 @@ function jsdoc_cron() {
       variable_set('jsdoc_cron_time', time());
 
       $count = 0;
-      foreach ($files as $list) {
-        if($count == $limit){
+      while (count($files)) {
+        $list = array_shift($files);
+
+        if (_jsdoc_cron_timeout()) {
           break;
         }
+        else{
+          variable_set('jsdoc_cron_files', $files);
+          if (empty($files)) {
+            break;
+          }
+        }
+
         ++$count;
         list($namespace, $file_name) = $list;
         unset($list);
@@ -559,6 +579,8 @@ function jsdoc_cron() {
             );
           }
         }
+
+        $files = variable_get('jsdoc_cron_files', array());
       }
 
       // TODO: Delete items from cache
