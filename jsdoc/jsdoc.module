@@ -437,14 +437,22 @@ function jsdoc_cron() {
       db_query("UPDATE {jsdoc_cache} SET used = 0");
       foreach (jsdoc_projects() as $project) {
         $version = jsdoc_version_node_load('HEAD', $project);
-        $query = db_query("SELECT vid FROM {jsdoc_resources} WHERE used = 0");
+        $query = db_query("SELECT vid FROM {jsdoc_resources} WHERE used = 0 AND version = %d", $version->nid);
+        $bad_vids = array();
         while ($result = db_fetch_object($query)) {
-          $object_query = db_query("SELECT MAX(vid) AS vid FROM {jsdoc_objects} WHERE resource_vid = %d OR provide_vid = %d GROUP BY nid");
-          if ($vid = db_result($object_query)) {
-            db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $vid);
-          }
+          $bad_vids[] = $result->vid;
         }
         db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
+        foreach ($bad_vids as $bad_vid){
+          $object_query = db_query("SELECT MAX(vid) AS vid FROM {jsdoc_objects} WHERE (resource_vid = %d OR provide_vid = %d) AND version = %d GROUP BY nid", $bad_vid, $bad_vid, $version->nid);
+          if (!db_num_rows($object_query)) {
+            db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $bad_vid);
+          }else{
+            while ($object_result = db_fetch_object($object_query)) {
+              db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $object_result->vid);
+            }
+          }
+        }
       }
       $files = call_user_func(_jsdoc_base() . '_get_files');
     }
@@ -517,8 +525,7 @@ function jsdoc_cron() {
           $provides_node = _jsdoc_resource_get_or_create($contents['#provides'], $namespace);
           $resource_node = _jsdoc_resource_get_or_create($contents['#resource'], $namespace);
 
-          db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $provides_node->vid);
-          db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $resource_node->vid);
+          db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid IN (%d, %d)", $provides_node->vid, $resource_node->vid);
 
           if ($cache_hit) {
             if (!$resource_node->is_new) {
