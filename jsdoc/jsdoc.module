@@ -2992,8 +2992,10 @@ function _jsdoc_get_object_themed($node, $title=null) {
     $parameters = _jsdoc_get_parameters_themed($node);
     if (!empty($parameters)) {
       $object->parameters = $parameters;
-      $object->signature = _jsdoc_build_function_signature($node, $parameters);
-      print_r($object);
+    }
+    $signature = _jsdoc_build_function_signature($node, $parameters);
+    if (!empty($signature)) {
+      $object->signature = $signature;
     }
   }
 
@@ -3555,6 +3557,10 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
 function _jsdoc_build_function_signature($node, $parameters) {
   if (isset($node->jsdoc_function_signature)) {
     return $node->jsdoc_function_signature;
+  }
+
+  if (jsdoc_get_type($node) != 'Function' && jsdoc_get_type($node) != 'Constructor') {
+    return;
   }
 
   $signature = 'function (';
