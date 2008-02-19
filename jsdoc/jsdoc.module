@@ -1469,7 +1469,11 @@ function jsdoc_is_initialized(&$node) {
   if (isset($node->jsdoc_initialized)) {
     return $node->jsdoc_initialized;
   }
-  return jsdoc_get_variable_object($node)->jsdoc_initialized;
+  $object = jsdoc_get_variable_object($node);
+  if ($object) {
+    return $object->jsdoc_initialized;
+  }
+  return false;
 }
 
 function jsdoc_get_classlike(&$node) {
@@ -2897,6 +2901,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
                 'title' => jsdoc_get_type($item),
                 'url' => jsdoc_object_node_load(jsdoc_get_type($item), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))->jsdoc_url
               ),
+              'singleton' => jsdoc_is_initialized($item),
               'inheritance' => array()
             );
             if ($mixin->title != $node->title) {
@@ -4195,29 +4200,4 @@ function theme_jsdoc_function_parameters($parameters) {
   $output .= '</div>';
 
   return $output;
-}
-
-/**
- * Theme a list of nodes that aren't classes or functions
- */
-function theme_jsdoc_object_fields($fields) {
-  if (!empty($nodes)) {
-    $output = '<div class="jsdoc_object_fields">';
-    $output .= '<fieldset class="collapsible">';
-    $output .= '<legend>' . 'BLAH' . '</legend>';
-    $output .= '<div class="fieldset-wrapper">';
-    foreach ($nodes as $node) {
-      $output .= '<div class="form-item">';
-      $output .= $node->object_type_link . $node->title_link;
-      if ($node->teaser) {
-        $output .= ': ' . $node->teaser;
-      }
-      $output .= '</div>';
-    }
-    $output .= '</div>';
-    $output .= '</fieldset>';
-    $output .= '</div>';
-
-    return $output;
-  }
 }
