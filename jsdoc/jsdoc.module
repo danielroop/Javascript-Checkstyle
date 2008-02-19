@@ -2973,8 +2973,7 @@ function _jsdoc_get_object_themed($node, $title=null) {
     ),
     'url' => $node->jsdoc_url,
     'summary' => jsdoc_get_teaser($node),
-    'singleton' => jsdoc_is_initialized($node),
-    'inheritance' => array()
+    'singleton' => jsdoc_is_initialized($node)
   );
 
   if ($object->url) {
