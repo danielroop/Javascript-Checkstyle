@@ -1566,10 +1566,10 @@ function jsdoc_get_type(&$node) {
 
   if ($type == 'Function') {
     if (jsdoc_get_classlike($node)) {
-      $type = 'Class';
+      $type = 'Constructor';
     }
     elseif (count(jsdoc_get_child_instances($node, true)) || count(jsdoc_get_child_prototypes($node, true))) {
-      $type = 'Class';
+      $type = 'Constructor';
     }
   }
 
@@ -2455,7 +2455,7 @@ function jsdoc_object_node_load($name, $project, $version, $resource = false) {
       'jsdoc_url' => 'http://developer.mozilla.org/en/docs/DOM:element'
     );
   }
-  elseif ($name == 'Class') {
+  elseif ($name == 'Constructor') {
     return (object)array(
       'title' => $name,
       'jsdoc_url' => 'http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Guide:Class-Based_vs._Prototype-Based_Languages#Defining_a_Class'
@@ -2783,7 +2783,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     );
   }
 
-  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Class') {
+  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Constructor') {
     // TODO: jsdoc_get_parameters_themed goes here
     $parameters = _jsdoc_get_parameters_themed($node);
 
@@ -3097,7 +3097,7 @@ function _jsdoc_format_type($type, $classlike = false, $optional = false, $recur
     $output['html_type_suffix'] = '*/';
     $output['type'] = $type;
     if ($type == 'Function' && $classlike) {
-      $output['type'] = 'Class';
+      $output['type'] = 'Constructor';
     }
     if ($optional) {
       $output['type'] .= '?';
