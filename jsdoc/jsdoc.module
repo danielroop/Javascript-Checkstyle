@@ -2709,31 +2709,25 @@ function jsdoc_variable_node_view($node) {
   }
   $form['body']['#value'] .= jsdoc_get_body($node);
 
-  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Class') {
-    $resources = jsdoc_get_variable_resources($node);
+  $resources = jsdoc_get_variable_resources($node);
 
-    $display_resources = array();
-    foreach ($resources as $resource_value) {
-      $display_resources[] = (object)array(
-        'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
-      );
-    }
-    $form['jsdoc_resources'] = array(
-      '#value' => theme('jsdoc_object_resources', $node, $display_resources),
-      '#weight' => 10
+  $display_resources = array();
+  foreach ($resources as $resource_value) {
+    $display_resources[] = (object)array(
+      'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
     );
   }
+  $form['jsdoc_resources'] = array(
+    '#value' => theme('jsdoc_object_resources', $node, $display_resources),
+    '#weight' => 10
+  );
 
   $children = array();
   $variables = jsdoc_get_child_variables($node);
   if (!empty($variables)) {
     uksort($variables, "strnatcasecmp");
     foreach ($variables as $child) {
-      $children[] = (object)array(
-        'title' => $child->title,
-        'url' => $child->jsdoc_url,
-        'summary' => jsdoc_get_teaser($child)
-      );
+      $children[] = _jsdoc_get_object_themed($child);
     }
     $form['children'] = array(
       '#value' => theme('jsdoc_object_children', $children),
@@ -2895,15 +2889,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
             }
           }
           else {
-            $children[$title] = (object)array(
-              'title' => $title,
-              'type' => (object)array(
-                'title' => jsdoc_get_type($item),
-                'url' => jsdoc_object_node_load(jsdoc_get_type($item), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))->jsdoc_url
-              ),
-              'singleton' => jsdoc_is_initialized($item),
-              'inheritance' => array()
-            );
+            $children[$title] = _jsdoc_get_object_themed($item, $title);
             if ($mixin->title != $node->title) {
               $children[$title]->inheritance[] = (object)array(
                 'title' => $mixin->title,
@@ -2971,6 +2957,23 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
     }
   }
   drupal_goto('node/' . $node->nid . '/edit');
+}
+
+function _jsdoc_get_object_themed($node, $title=null) {
+  if (is_null($title)) {
+    $title = $node->title;
+  }
+
+  return (object)array(
+    'title' => $title,
+    'type' => (object)array(
+      'title' => jsdoc_get_type($node),
+      'url' => jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))->jsdoc_url
+    ),
+    'summary' => jsdoc_get_teaser($node),
+    'singleton' => jsdoc_is_initialized($node),
+    'inheritance' => array()
+  );
 }
 
 function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
