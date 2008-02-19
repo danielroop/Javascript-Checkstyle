@@ -2988,6 +2988,11 @@ function _jsdoc_get_object_themed($node, $title=null) {
     else {
       $object->type->a = $type->title;
     }
+
+    $parameters = _jsdoc_get_parameters_themed($node);
+    if (!empty($parameters)) {
+      $object->parameters = $parameters;
+    }
   }
 
   return $object;
