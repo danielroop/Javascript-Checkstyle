@@ -2898,18 +2898,20 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
               );
             }
           }
-          $children[$title]->url = $item->jsdoc_url;
           if ($type == 'variable') {
             $children[$title]->normal = true;
+          }
+          else {
+            $children[$title]->$type = true;
           }
           if (trim(jsdoc_get_teaser($item)) != '') {
             $children[$title]->summary = jsdoc_get_teaser($item);
           }
-          $children[$title]->$type = true;
         }
       }
     }
   }
+  print_r($children);
   uksort($children, "strnatcasecmp");
 
   if (count($children)) {
@@ -2964,16 +2966,27 @@ function _jsdoc_get_object_themed($node, $title=null) {
     $title = $node->title;
   }
 
-  return (object)array(
+  $object = (object)array(
     'title' => $title,
     'type' => (object)array(
-      'title' => jsdoc_get_type($node),
-      'url' => jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))->jsdoc_url
+      'title' => '',
+      'url' => '',
+      'a' => ''
     ),
+    'url' => $node->jsdoc_url,
+    'a' => l($node->title, $node->jsdoc_url),
     'summary' => jsdoc_get_teaser($node),
     'singleton' => jsdoc_is_initialized($node),
     'inheritance' => array()
   );
+
+  if ($type = jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)))) {
+    $object->type->title = $type->title;
+    $object->type->url = $type->jsdoc_url;
+    $object->type->a = l($type->title, $type->jsdoc_url);
+  }
+
+  return $object;
 }
 
 function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
