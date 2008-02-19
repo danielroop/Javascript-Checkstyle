@@ -3013,6 +3013,8 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
     $parameter = (object)$item['jsdoc_formatted'];
     $parameter->summary = $item['summary'];
     $parameter->name = $item['name'];
+    $parameter->optional = $item['optional'];
+    $parameter->recurring = $item['recurring'];
     $parameter->types = false;
     if ($cleaned) {
       unset($parameter->html_type_prefix);
@@ -3576,7 +3578,14 @@ function _jsdoc_build_function_signature($node, $parameters) {
           $types[] = $type->a;
         }
       }
-      $signature .= $parameter->html_type_prefix . implode('|', $types) . $parameter->html_type_suffix . $parameter->separator . $parameter->name;
+      $signature .= $parameter->html_type_prefix . implode('|', $types);
+      if ($parameter->optional) {
+        $signature .= '?';
+      }
+      if ($parameter->recurring) {
+        $signature .= '...';
+      }
+      $signature .= $parameter->html_type_suffix . $parameter->separator . $parameter->name;
     }
   }
 
