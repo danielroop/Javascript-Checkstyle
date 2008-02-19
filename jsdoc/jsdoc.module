@@ -1379,7 +1379,7 @@ function jsdoc_get_parameters(&$node) {
   $object->jsdoc_parameters = array();
   $query = db_query("SELECT name, type, summary, optional, repeating FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
   while ($parameter = db_fetch_array($query)) {
-    $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['recurring']);
+    $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['repeating']);
     $object->jsdoc_parameters[$parameter['name']] = $parameter;
   }
   return $object->jsdoc_parameters;
@@ -3014,7 +3014,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
     $parameter->summary = $item['summary'];
     $parameter->name = $item['name'];
     $parameter->optional = $item['optional'];
-    $parameter->recurring = $item['recurring'];
+    $parameter->repeating = $item['repeating'];
     $parameter->types = false;
     if ($cleaned) {
       unset($parameter->html_type_prefix);
@@ -3022,7 +3022,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
       unset($parameter->separator);
     }
 
-    $type = $parameter->type;
+    $type = $item['type'];
     $types = array();
     if (strpos($type, '|') !== false) {
       $types = preg_split('%\|+%', $type);
@@ -3069,12 +3069,12 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
                 $optional = ($found > 0);
                 $found = 0;
                 $field_type = str_replace('...', '', $field_type, $found);
-                $recurring = ($found > 0);
+                $repeating = ($found > 0);
 
                 $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
                 $field_type = (object)array(
                   'title' => $field_obj->title,
-                  'recurring' => $recurring,
+                  'repeating' => $repeating,
                   'optional' => $optional,
                   'summary' => jsdoc_get_teaser($field_obj)
                 );
@@ -3099,7 +3099,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
   return ($node->jsdoc_parameters_themed = $parameters);
 }
 
-function _jsdoc_format_type($type, $classlike = false, $optional = false, $recurring = false) {
+function _jsdoc_format_type($type, $classlike = false, $optional = false, $repeating = false) {
   $output = array();
   $name = '';
 
@@ -3113,7 +3113,7 @@ function _jsdoc_format_type($type, $classlike = false, $optional = false, $recur
     if ($optional) {
       $output['type'] .= '?';
     }
-    if ($recurring) {
+    if ($repeating) {
       $output['type'] .= '...';
     }
   }
@@ -3582,7 +3582,7 @@ function _jsdoc_build_function_signature($node, $parameters) {
       if ($parameter->optional) {
         $signature .= '?';
       }
-      if ($parameter->recurring) {
+      if ($parameter->repeating) {
         $signature .= '...';
       }
       $signature .= $parameter->html_type_suffix . $parameter->separator . $parameter->name;
@@ -4097,7 +4097,7 @@ function theme_jsdoc_object_children($children) {
   $output .= '<legend>Fields</legend>';
   $output .= '<div class="fieldset-wrapper">';
   foreach ($children as $child) {
-    $output .= '<div class="form-item">';
+    $output .= '<div class=F"form-item">';
     if ($child->type) {
       $output .= '<em>' . $child->type->a . '</em> ';
     }
@@ -4200,12 +4200,12 @@ function theme_jsdoc_function_parameters($parameters) {
         $output .= '<br>';
 
         $field_types = array();
-        $recurring = false;
+        $repeating = false;
         $optional = false;
         if ($field->types) {
           foreach ($field->types as $type) {
-            if ($type->recurring) {
-              $recurring = true;
+            if ($type->repeating) {
+              $repeating = true;
             }
             if ($type->optional) {
               $optional = true;
@@ -4219,8 +4219,8 @@ function theme_jsdoc_function_parameters($parameters) {
           $output .= implode('|', $field_types) . ' ';
         }
         $output .= $field->a;
-        if ($recurring) {
-          $output .= ' <small><em>recurring</em></small>';
+        if ($repeating) {
+          $output .= ' <small><em>repeating</em></small>';
         }
         if ($optional) {
           $output .= ' <small><em>optional</em></small>';
