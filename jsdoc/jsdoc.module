@@ -2908,7 +2908,6 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
       }
     }
   }
-  print_r($children);
   uksort($children, "strnatcasecmp");
 
   if (count($children)) {
