@@ -2992,6 +2992,8 @@ function _jsdoc_get_object_themed($node, $title=null) {
     $parameters = _jsdoc_get_parameters_themed($node);
     if (!empty($parameters)) {
       $object->parameters = $parameters;
+      $object->signature = _jsdoc_build_function_signature($node, $parameters);
+      print_r($object);
     }
   }
 
