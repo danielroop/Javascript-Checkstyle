@@ -2233,7 +2233,7 @@ function jsdoc_variable_node_view($node) {
     );
   }
 
-  drupal_set_title(theme('jsdoc_object_title', $node));
+  drupal_set_title(theme('jsdoc_object_title', _jsdoc_get_title_themed($node)));
 
   return drupal_render_form('jsdoc_variable_form', $form);
 }
@@ -2252,7 +2252,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
 
   drupal_add_js('misc/collapse.js');
 
-  drupal_set_title(theme('jsdoc_object_title', $node));
+  drupal_set_title(theme('jsdoc_object_title', _jsdoc_get_title_themed($node)));
 
   $form = node_prepare($node, false)->content;
 
@@ -2435,6 +2435,48 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
     }
   }
   drupal_goto('node/' . $node->nid . '/edit');
+}
+
+function _jsdoc_get_title_themed($node) {
+  $themed = (object)array(
+    'title' => $node->title,
+    'crumbs' => array()
+  );
+
+  if ($type = jsdoc_get_type($node)) {
+    $type = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+    $themed->type = (object)array(
+      'title' => $type->title,
+      'url' => $type->jsdoc_url
+    );
+    if ($type->jsdoc_url) {
+      $themed->type->a = l($type->title, $type->jsdoc_url);
+    }
+    else {
+      $themed->type->a = $type->title;
+    }
+  }
+
+  $parts = explode('.', $node->title);
+  $title_text = "";
+  $end = array_pop($parts);
+  foreach ($parts as $part) {
+    if (!empty($title_text)) {
+      $title_text .= '.';
+    }
+    $title_text .= $part;
+
+    $obj = jsdoc_object_node_load($title_text, jsdoc_get_project($node), jsdoc_get_version($node));
+    if ($obj) {
+      $themed->crumbs[] = l($part, $obj->jsdoc_url);
+    }
+    else {
+      $themed->crumbs[] = $part;
+    }
+  }
+  $themed->crumbs[] = $end;
+
+  return $themed;  
 }
 
 function _jsdoc_get_object_themed($node, $title=null) {
@@ -3053,7 +3095,7 @@ function _jsdoc_build_function_signature($node, $parameters) {
     return;
   }
 
-  $signature = 'function (';
+  $signature = '(';
 
   if ($parameters) {
     foreach ($parameters as $weight => $parameter) {
@@ -3500,45 +3542,12 @@ function theme_jsdoc_object_resources($node, $resources) {
 /**
  * Theme the object type block.
  */
-function theme_jsdoc_object_title($node) {
-  $parts = explode('.', $node->title);
-  $title_text = "";
-  $end = array_pop($parts);
-  $title = "";
-  $last_part = "";
-  foreach ($parts as $part) {
-    if (!empty($title_text)) {
-      $title_text .= '.';
-    }
-    $title_text .= $part;
-
-    $obj = jsdoc_object_node_load($title_text, jsdoc_get_project($node), jsdoc_get_version($node));
-    if (!empty($title)) {
-      $title .= '.';
-    }
-    if ($obj) {
-      $title .= l($part, $obj->jsdoc_url);
-    }
-    else {
-      $title .= $part;
-    }
+function theme_jsdoc_object_title($title) {
+  $output = implode('.', $title->crumbs);
+  if ($title->type) {
+    $output .= ': ' . $title->type->a;
   }
-  if (!empty($title)) {
-    $title .= '.';
-  }
-
-  $title .= $end;
-
-  /*
-  if (jsdoc_get_type($node)) {
-    $type_node = jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node));
-    if ($type_node) {
-      $title .= ': ' . l(jsdoc_get_type($node), $type_node->jsdoc_url);
-    }
-  }
-  */
-  
-  return $title;
+  return $output;
 }
 
 /**
@@ -3588,11 +3597,8 @@ function theme_jsdoc_object_children($children) {
   $output .= '<legend>Fields</legend>';
   $output .= '<div class="fieldset-wrapper">';
 
-  $statics = array();
-  $functions = array();
-  $constructors = array();
-  $objects = array();
   foreach($children as $child){
+    
     if($child->type){
       if($child->type->title=="Constructor") $constructors[]=$child;
       else if($child->type->title=="Function") $functions[]=$child;
@@ -3602,7 +3608,7 @@ function theme_jsdoc_object_children($children) {
       $objects[]=$child;
     }
   }
-  
+
   $types = array("Statics"=>$statics, "Constructors"=>$constructors, "Properties"=>$objects, "Functions"=>$functions);
   foreach($types as $key=>$arr){
     if(count($arr)){
@@ -3613,31 +3619,8 @@ function theme_jsdoc_object_children($children) {
       if ($child->type && $key!='Functions' && $key!="Constructors") {
         $output .= ': <small>' . $child->type->a . '</small> ';
       }
-      if($child->parameters){
-		  $output .= '(';
-		  foreach ($child->parameters as $i => $param){
-			if($i){
-			  $output .= ', ';
-			}
-		    if($param->types){
-			  $output .= '/* ';
-			  foreach ($param->types as $j => $type){
-				if($j) {
-				  $output .= '|';
-				}
-				$output .= $type->a ;
-			  }
-			  if($param->repeating){
-				$output .= '...';
-			  }
-			  if($param->optional){
-				$output .= '?';
-			  }
-			  $output .= ' */ ';
-			}
-			$output .= $param->name;
-          }
-		  $output .= ') ';
+      if($child->signature){
+        $output .= $child->signature;
       }
 	  else if($key=="Functions"){
         $output .= '() ';
@@ -3704,7 +3687,7 @@ function theme_jsdoc_function_information($function, $fields) {
   $output .= '<legend>' . 'Function Information' . '</legend>';
   $output .= '<div class="fieldset-wrapper">';
   $output .= '<div class="form-item">';
-  $output .= $function->signature;
+  $output .= 'function ' . $function->signature;
   $output .= '</div>';
   $output .= '</div>';
   $output .= '</fieldset>';
