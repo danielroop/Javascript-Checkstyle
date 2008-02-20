@@ -5,6 +5,9 @@
 function phptemplate_jsdoc_object_form($form) {
 }
 
+function phptemplate_jsdoc_object_form($form) {
+}
+
 // Use these functions to create the equivalent tpl.php files
 
 // function theme_jsdoc_object_children($children) {
