@@ -176,12 +176,32 @@ function jsdoc_block($op='list', $delta=0) {
   }
 }
 
-function _jsdoc_block_search(){
-  $form['search'] = array(
-    '#type' => 'textfield'
-  );
+function _jsdoc_block_search() {
+  if (module_exists('search')) {
+    $form['search'] = array(
+      '#type' => 'textfield',
+      '#size' => null,
+      '#maxlength' => null
+    );
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Go')
+    );
 
-  return $form;
+    return $form;
+  }
+}
+
+function _jsdoc_block_search_submit($form_id, $form) {
+  $search = $form['search'];
+
+  $object = jsdoc_object_node_load($search);
+  if ($object->type == 'jsdoc_object') {
+    drupal_goto($object->jsdoc_url);
+  }
+  else {
+    drupal_goto('search/jsdoc/' . $search);
+  }
 }
 
 /**
@@ -200,16 +220,16 @@ function jsdoc_update_index() {
 
   $last = variable_get('jsdoc_cron_last', 0);
   $last_nid = variable_get('jsdoc_cron_last_nid', 0);
-  $limit = (int)variable_get('jsdoc_cron_limit', 100);
+  $limit = (int)variable_get('search_cron_limit', 500);
 
-  $result = db_query_range("SELECT GREATEST(IF(c.last_comment_timestamp IS NULL, 0, c.last_comment_timestamp), n.changed) as last_change, n.nid FROM {node} n LEFT JOIN {node_comment_statistics} c ON n.nid = c.nid WHERE n.type IN ('jsdoc_variable', 'jsdoc_resource') AND n.status = 1 AND ((GREATEST(n.changed, c.last_comment_timestamp) = %d AND n.nid > %d) OR (n.changed > %d OR c.last_comment_timestamp > %d)) ORDER BY GREATEST(n.changed, c.last_comment_timestamp) ASC, n.nid ASC", $last, $last_nid, $last, $last, $last, 0, $limit);
+  $result = db_query_range("SELECT GREATEST(IF(c.last_comment_timestamp IS NULL, 0, c.last_comment_timestamp), n.changed) as last_change, n.nid FROM {node} n LEFT JOIN {node_comment_statistics} c ON n.nid = c.nid WHERE n.type = 'jsdoc_variable' AND n.status = 1 AND ((GREATEST(n.changed, c.last_comment_timestamp) = %d AND n.nid > %d) OR (n.changed > %d OR c.last_comment_timestamp > %d)) ORDER BY GREATEST(n.changed, c.last_comment_timestamp) ASC, n.nid ASC", $last, $last_nid, $last, $last, $last, 0, $limit);
 
   while ($node = db_fetch_object($result)) {
     $last_change = $node->last_change;
     $last_nid = $node->nid;
     $node = _jsdoc_node_load($node->nid);
 
-    $text = '<h1>'. str_replace('.', ' ', $node->title) .'</h1>'. $node->title . ' ' . $node->teaser . ' ' . $node->body;
+    $text = '<h1>'. str_replace('.', ' ', $node->title) .'</h1>'. $node->title . ' ' . jsdoc_get_teaser($node) . ' ' . jsdoc_get_body($node);
 
     // Fetch extra data normally not visible
     $extra = node_invoke_nodeapi($node, 'update index');
@@ -219,6 +239,18 @@ function jsdoc_update_index() {
 
     // Update index
     search_index($node->nid, 'jsdoc_' . jsdoc_get_version($node)->title, $text);
+  }
+}
+
+/**
+ * shutdown function to make sure we always mark the last node processed.
+ */
+function jsdoc_update_shutdown() {
+  global $last_change, $last_nid;
+
+  if ($last_change && $last_nid) {
+    variable_set('jsdoc_cron_last', $last_change);
+    variable_set('jsdoc_cron_last_nid', $last_nid);
   }
 }
 
@@ -240,18 +272,21 @@ function jsdoc_search($op = 'search', $keys = null) {
       $private = search_query_extract($keys, 'private');
       $keys = search_query_insert($keys, 'private');
 
-      $private_sql = "";
-      if (!$private) {
-        $private_sql = " AND (jo.private = 0 OR jo.private IS NULL) ";
+      if ($project && $version) {
+        $version = jsdoc_version_node_load($version, $project);
+        $version_title = $version->title;
+      }
+      else {
+        $version_title = 'HEAD';
       }
 
-      $project = _jsdoc_project_get_or_create($project);
-      $version = _jsdoc_version_get_or_create($version, $project);
-
-      $find = do_search(str_replace('.', ' ', $keys) . ' OR ' . $keys, 'jsdoc_' . $version->title, 'LEFT JOIN {jsdoc_objects} jo ON (i.sid = jo.nid) LEFT JOIN {jsdoc_resources} jr ON (i.sid = jr.nid)', '(jo.version = ' . $version->nid . ' OR jr.version = ' . $version->nid . ')' . $private_sql);
+      $find = do_search(str_replace('.', ' ', $keys) . ' OR ' . $keys, 'jsdoc_' . $version_title);
       $results = array();
       foreach ($find as $item) {
         $node = _jsdoc_node_load($item->sid);
+        if ($version && jsdoc_get_version($node)->nid != $version->nid) {
+          continue;
+        }
 
         $info = jsdoc_node_info();
         $results[] = array(
@@ -262,7 +297,7 @@ function jsdoc_search($op = 'search', $keys = null) {
           'date' => $node->changed,
           'node' => $node,
           'score' => $item->score,
-          'snippet' => ($node->teaser) ? search_excerpt($keys, $node->teaser) : ''
+          'snippet' => (jsdoc_get_teaser($node)) ? search_excerpt($keys, jsdoc_get_teaser($node)) : ''
         );
       }
       return $results;
@@ -273,7 +308,13 @@ function jsdoc_search($op = 'search', $keys = null) {
  * Implementation of hook_search_validate()
  */
 function jsdoc_search_validate($form_id, $form_values, $form) {
-  list($project, $version) = explode('_', $form_values['jsdoc_version']);
+  if (!$form_values['jsdoc_version']) {
+    $project = '';
+    $version = '';
+  }
+  else {
+    list($project, $version) = explode('_', $form_values['jsdoc_version']);
+  }
 
   $keys = search_query_insert($form_values['processed_keys'], 'project', $project);
   $keys = search_query_insert($keys, 'version', $version);
@@ -372,6 +413,15 @@ function jsdoc_cron() {
       }
       variable_set('jsdoc_cron_time', time());
 
+      $file_ctimes = array();
+      $query = db_query("SELECT ctime, cid, namespace, filepath FROM {jsdoc_cache}");
+      while ($cache = db_fetch_object($query)) {
+        if (!$file_ctimes[$cache->namespace]) {
+          $file_ctimes[$cache->namespace] = array();
+        }
+        $file_ctimes[$cache->namespace][$cache->filepath] = $cache;
+      }
+
       $count = 0;
       while (count($files)) {
         $list = array_shift($files);
@@ -399,8 +449,7 @@ function jsdoc_cron() {
         $cache_dir = _jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/cache/';
         $ctime = call_user_func(_jsdoc_base() . '_get_file_time', $namespace, $file_name);
         $cache_hit = false;
-        $query = db_query("SELECT ctime, cid, namespace, filepath FROM {jsdoc_cache} WHERE namespace = '%s' AND filepath = '%s'", $namespace, $file_name);
-        if ($cache = db_fetch_object($query)) {
+        if ($file_ctimes[$namespace] && ($cache = $file_ctimes[$namespace][$file_name])) {
           if ($cache->ctime != $ctime || !file_exists($cache_dir . $cache->cid)) {
             $contents = call_user_func(_jsdoc_base() . '_get_contents', $namespace, $file_name);
             db_query("UPDATE {jsdoc_cache} SET used = 1, ctime = %d WHERE namespace = '%s' AND filepath = '%s'", $ctime, $namespace, $file_name);
@@ -524,9 +573,9 @@ function jsdoc_form_alter($form_id, &$form) {
     unset($form['taxonomy']);
   }
   elseif ($form_id == 'search_form' && $form['module']['#value'] == 'jsdoc') {
-    $options = array();
+    $options = array('' => '-----');
 
-    $query = db_query("SELECT n.title AS project, n2.title AS version FROM {node} n JOIN {jsdoc_versions} j ON (j.project = n.nid) JOIN {node} n2 ON (n2.nid = j.nid) WHERE n.type = 'jsdoc_project' AND n.status = 1 AND n2.status = 1 ORDER BY n2.vid DESC");
+    $query = db_query("SELECT n.title AS project, n2.title AS version FROM {node} n JOIN {jsdoc_versions} j ON (j.project = n.nid) JOIN {node} n2 ON (n2.nid = j.nid) WHERE n.type = 'jsdoc_project' AND n.title != '' AND n.status = 1 AND n2.status = 1 ORDER BY n2.vid DESC");
     while ($node = db_fetch_object($query)) {
       $options[$node->project . '_' . $node->version] = $node->project . ' -- ' . $node->version;
     }
@@ -534,8 +583,7 @@ function jsdoc_form_alter($form_id, &$form) {
     $form['jsdoc_version'] = array(
       '#title' => t('Version'),
       '#type' => 'select',
-      '#options' => $options,
-      '#required' => true
+      '#options' => $options
     );
 
     $project = search_query_extract($form['basic']['inline']['keys']['#default_value'], 'project');
@@ -1019,10 +1067,14 @@ function jsdoc_object_load($node) {
  * Implementation of hook_view().
  */
 function jsdoc_object_view($node, $teaser = false, $page = false) {
-  $node = node_prepare($node, $teaser);
+  $node->teaser = '';
+  $node->body = '';
   if (!$teaser) {
-    // Add link to the jsdoc page
+    $node->body = l($node->title, $node->jsdoc_url);
   }
+  $node->title = t('Object');
+  $node->taxonomy = array();
+  $node = node_prepare($node, $teaser);
   return $node;
 }
 
@@ -1627,508 +1679,34 @@ function jsdoc_variable_load($node) {
 /**
  * Implementation of hook_view().
  */
+function jsdoc_project_view($node, $teaser = false, $page = false) {
+  return jsdoc_resource_view($node, $teaser, $page);
+}
+
+/**
+ * Implementation of hook_view().
+ */
+function jsdoc_version_view($node, $teaser = false, $page = false) {
+  return jsdoc_resource_view($node, $teaser, $page);
+}
+
+/**
+ * Implementation of hook_view().
+ */
 function jsdoc_resource_view($node, $teaser = false, $page = false) {
   $node->title = '';
   $node->teaser = '';
   $node->body = '';
+  $node = node_prepare($node);
+  return $node;
 }
 
 /**
  * Implementation of hook_view().
  */
 function jsdoc_variable_view($node, $teaser = false, $page = false) {
-  $node = node_prepare($node, $teaser);
-  return _jsdoc_detail_view($node);
+  return jsdoc_object_view($node, $teaser, $page);
 }
-
-/*
-function _jsdoc_detail_view($node) {
-  if ($node->type == 'jsdoc_variable') {
-    if ($node->jsdoc_detail) {
-      $detail = _jsdoc_node_load($node->jsdoc_detail->nid, $node->jsdoc_detail->vid);
-      $node->contents = $detail->contents; // Save the comments/etc to the detail, not to the parent.
-    }
-  }
-  elseif ($node->type == 'jsdoc_object') {
-    $detail = $node;
-  }
-
-  $parts = explode('.', $node->title);
-  $title_text = "";
-  $end = array_pop($parts);
-  $title = "";
-  $last_part = "";
-  foreach ($parts as $part) {
-    if (!empty($title_text)) {
-      $title_text .= '.';
-    }
-    $title_text .= $part;
-
-    $obj = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $title_text);
-    if (!empty($title)) {
-      $title .= '.';
-    }
-    if ($obj) {
-      $title .= l($part, $obj->jsdoc_url);
-    }
-    else {
-      $title .= $part;
-    }
-  }
-  if (!empty($title)) {
-    $title .= '.';
-  }
-  drupal_set_title($title . $end);
-
-  $version = jsdoc_get_version($node);
-
-  if ($node->jsdoc_disambiguation && $node->jsdoc_disambiguation->vid) {
-    $node->content['detail']['jsdoc_disambiguation'] = array(
-      '#type' => 'item',
-      '#title' => t('In Resource'),
-      '#value' => l($node->jsdoc_disambiguation->title, $node->jsdoc_disambiguation->jsdoc_url),
-      '#weight' => -22
-    );
-  }
-
-  if (!empty($node->jsdoc_disambiguations)) {
-    $node->content['detail']['jsdoc_disambiguations'] = array(
-      '#type' => 'fieldset',
-      '#title' => ($node->jsdoc_disambiguation && $node->jsdoc_disambiguation != 0) ? t('Also in Resources') : t('Appears in Resources'),
-      '#collapsible' => true,
-      '#collapsed' => true,
-      '#weight' => -20
-    );
-    foreach ($node->jsdoc_disambiguations as $disambiguation) {
-      jsdoc_get_resource($disambiguation);
-      jsdoc_get_provide($disambiguation);
-      $node->content['detail']['jsdoc_disambiguations'][] = array(
-        '#type' => 'item',
-        '#value' => l($disambiguation->jsdoc_resource->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $disambiguation->jsdoc_resource->title) . '/' . $node->title)
-      );
-    }
-  }
-
-  if (trim($node->teaser)) {
-    $node->content['detail']['teaser'] = array(
-      '#type' => 'item',
-      '#weight' => -55,
-      '#value' => $node->teaser
-    );
-  }
-
-  if (trim($node->body)) {
-    $node->content['detail']['body']['#value'] = _jsdoc_markup_text($node->body, jsdoc_get_version($node)->nid, $node->format);
-    $node->content['detail']['body']['#type'] = 'item';
-    $node->content['detail']['body']['#title'] = t('Description');
-    $node->content['detail']['body']['#weight'] = -50;
-    unset($node->content['body']);
-  }
-
-  $view_as_private = (arg(0) == 'jsdoc' && arg(5) == 'private') ? true : false;
-
-  if ($detail) {
-    if (count(jsdoc_get_examples($detail))) {
-      $example = array_shift(jsdoc_get_examples($detail));
-      $node->content['detail']['example'] = array(
-        '#type' => 'fieldset',
-        '#title' => t('Example'),
-        '#value' => $example,
-        '#weight' => -36
-      );
-      foreach (jsdoc_get_examples($detail) as $weight => $example) {
-        $node->content['detail']['examples'][] = array(
-          '#type' => 'fieldset',
-          '#title' => t('Example'),
-          '#value' => $example."foo",
-          '#weight' => $weight
-        );
-      }
-      $node->content['detail']['examples']['#weight'] = -35;
-    }
-
-    if ($node->jsdoc_initialized) {
-      if ($prototype_chain = jsdoc_get_prototype_chain($detail, array(3, 4))) {
-        $value = '';
-        foreach ($prototype_chain as $chain) {
-          if (!$value) {
-            $value = l($chain->title, $chain->jsdoc_url);
-          }
-          else {
-            $value .= ' -> ' . l($chain->title, $chain->jsdoc_url);
-          }
-        }
-        $node->content['detail']['prototype_chain'] = array(
-          '#type' => 'item',
-          '#title' => t('Prototype'),
-          '#value' => $value,
-          '#weight' => -28
-        );
-      }
-    }
-
-    jsdoc_get_parents($detail);
-    if ($detail->jsdoc_parents['mixin']) {
-      if ($node->jsdoc_initialized) {
-        $mixins = $detail->jsdoc_parents['mixin']['prototype'];
-      }
-      else {
-        $mixins = $detail->jsdoc_parents['mixin']['normal'];
-      }
-      $mixin_list = array();
-      if ($mixins) {
-        foreach ($mixins as $mixin) {
-          if (substr($mixin, -9) == 'prototype') {
-            $my_mixin = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), substr($mixin, 0, -10));
-            $my_mixin->title = $mixin;
-            $mixin = $my_mixin;
-          }
-          else {
-            $mixin = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $mixin);
-          }
-          if ($mixin) {
-            if ($mixin->jsdoc_url) {
-              $mixin_list[] = l($mixin->title, $mixin->jsdoc_url);
-            }
-            else {
-              $mixin_list[] = $mixin->title;
-            }
-          }
-        }
-        if (!empty($mixin_list)) {
-          $node->content['detail']['mixins'] = array(
-            '#type' => 'item',
-            '#title' => t('Mixins'),
-            '#value' => implode(', ', $mixin_list),
-            '#weight' => -29
-          );
-        }
-      }
-    }
-
-    jsdoc_get_resource($detail);
-    jsdoc_get_provide($detail);
-
-    if ($detail->jsdoc_resource_vid) {
-      $node->content['detail']['jsdoc_requires'] = array(
-        '#type' => 'item',
-        '#title' => t('In Resource'),
-        '#value' => l($detail->jsdoc_resource->title, $detail->jsdoc_resource->jsdoc_url),
-        '#weight' => -19
-      );
-    }
-
-    _jsdoc_cron_chdir(true);
-    $call = _jsdoc_base() . '_get_include';
-    _jsdoc_cron_chdir();
-    if (function_exists($call)) {
-      $call = call_user_func($call, $node, $detail->jsdoc_provide);
-      if ($call && $detail->jsdoc_provide->title != $detail->jsdoc_resource->title) {
-        $call = str_replace('%s', l($detail->jsdoc_provide->title, $detail->jsdoc_provide->jsdoc_url), $call);
-        $node->content['detail']['jsdoc_provides'] = array(
-          '#type' => 'item',
-          '#title' => t('To Include'),
-          '#value' => $call,
-          '#weight' => -30
-        );
-      }
-    }
-
-    jsdoc_get_parents($detail);
-
-    if ($detail->jsdoc_parents['normal']) {
-      $node->content['detail']['jsdoc_parents'] = array(
-        '#weight' => -18
-      );
-      foreach ($detail->jsdoc_parents['normal'] as $weight => $parent) {
-        $parent = jsdoc_object_node_load(jsdoc_get_project($version)->nid, $version->title, $parent);
-        $node->content['detail']['jsdoc_parents'][$parent->title] = array(
-          '#type' => 'item',
-          '#value' => l($parent->title, $parent->jsdoc_url),
-          '#weight' => $weight
-        );
-        if (!$weight) {
-          if (count($detail->jsdoc_parents['normal']) == 1) {
-            $node->content['detail']['jsdoc_parents'][$parent->title]['#title'] = t('Parent Object');
-          }
-          else {
-            $node->content['detail']['jsdoc_parents'][$parent->title]['#title'] = t('Parent Objects');
-          }
-        }
-      }
-    }
-
-    if ($detail->jsdoc_type) {
-      $node->content['detail']['jsdoc_type'] = array(
-        '#type' => 'item',
-        '#title' => t('Object Type'),
-        '#value' => ($node->jsdoc_initialized || $detail->jsdoc_initialized) ? $detail->jsdoc_formatted['class_type'] : $detail->jsdoc_formatted['type'],
-        '#weight' => -15
-      );
-    }
-
-    if ($detail->jsdoc_source) {
-      $node->content['detail']['jsdoc_source'] = array(
-        '#type' => 'fieldset',
-        '#title' => t('Source'),
-        '#weight' => 20
-      );
-    
-      $parameters = array();
-      $worth_displaying = false;
-      foreach (jsdoc_get_parameters($detail) as $parameter) {
-        $worth_displaying = true;
-        $type = $parameter['jsdoc_formatted']['type'];
-        $types = array();
-        if (strpos($type, '|') !== false) {
-          $types = preg_split('%\|+%', $type);
-        }
-        elseif ($type) {
-          $types = array($type);
-        }
-        foreach ($types as $i => $type) {
-          $obj = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $type, jsdoc_get_resource($node)->title);
-          if ($obj) {
-            $types[$i] = l($type, $obj->jsdoc_url);
-          }
-        }
-        $type = implode('|', $types);
-        $parameters[] = $parameter['jsdoc_formatted']['html_type_prefix'] . $parameter['jsdoc_formatted']['type'] . $parameter['jsdoc_formatted']['html_type_suffix'] . $parameter['jsdoc_formatted']['separator'] . $parameter['name'];
-        $node->content['detail']['jsdoc_parameters'][$parameter['name']] = array(
-          '#type' => 'item',
-          '#weight' => $parameter['weight']
-        );
-        if ($parameter['summary']) {
-          $node->content['detail']['jsdoc_parameters'][$parameter['name']]['#value'] = $type . $parameter['jsdoc_formatted']['separator'] . $parameter['name'] . ': ' . $parameter['summary'];
-        }
-        else {
-          $node->content['detail']['jsdoc_parameters'][$parameter['name']]['#value'] = $type . $parameter['jsdoc_formatted']['separator'] . $parameter['name'];
-        }
-      }
-  
-      if (!$worth_displaying) {
-        unset($node->content['detail']['jsdoc_parameters']);
-      }
-      else {
-        $node->content['detail']['jsdoc_parameters']['#type'] = 'fieldset';
-        $node->content['detail']['jsdoc_parameters']['#title'] = t('Parameters');
-        $node->content['detail']['jsdoc_parameters']['#collapsible'] = true;
-        $node->content['detail']['jsdoc_parameters']['#weight'] = 10;
-      }
-  
-      $source = '';
-      if ($detail->jsdoc_returns) {
-        $source .= $detail->jsdoc_returns . ' ';
-      }
-
-      $source .= 'function ' . $detail->title . '(' . implode(', ', $parameters) . '){';
-      if (isset($_GET['source'])) {
-        $source .= "\n\t" . trim($detail->jsdoc_source) . "\n";
-      }
-      else {
-        $source .= ' "View source" ';
-      }
-      $source .= '}';
-
-      $base = $detail->title;
-      if (!$node->jsdoc_initialized) {
-        if (count($detail->jsdoc_parents['instance'])) {
-          $base = $detail->jsdoc_parents['instance'][0];
-        }
-        if (count($detail->jsdoc_parents['prototype'])) {
-          $base = $detail->jsdoc_parents['prototype'][0];
-        }
-      }
-      $source = _jsdoc_markup_code($source, jsdoc_get_version($detail)->nid, $base);
-
-      if (!isset($_GET['source'])) {
-        $source = str_replace('<span class="st0">&quot;View source&quot;</span>', '<span class="st0">&quot;</span>' . l('<span class="st0" style="text-decoration: underline;">View source</span>', $_GET['q'], array(), 'source', null, false, true) . '<span class="st0">&quot;</span>', $source);
-      }
-
-      $node->content['detail']['jsdoc_source']['source'] = array(
-        '#type' => 'item',
-        '#value' => $source
-      );
-    }
-    
-    if ($node->jsdoc_initialized) {
-      $detail->jsdoc_initialized = true;
-    }
-
-    jsdoc_load_children($detail, $view_as_private);
-    $variables = array();
-    if ($detail->jsdoc_instances && $node->jsdoc_initialized){
-      foreach ($detail->jsdoc_instances as $child) {
-        $variables[$child->title] = $child;
-      }
-    }
-    if ($detail->jsdoc_prototypes && $node->jsdoc_initialized){
-      foreach ($detail->jsdoc_prototypes as $child) {
-        $variables[$child->title] = $child;
-      }
-    }
-    if ($detail->jsdoc_variables && !$node->jsdoc_initialized){
-      foreach ($detail->jsdoc_variables as $child) {
-        $variables[$child->title] = $child;
-      }
-    }
-    if ($detail->jsdoc_chains){
-      foreach ($detail->jsdoc_chains as $subtype => $chain) {
-        foreach ($chain as $child) {
-            // $variables[$child->title] = $child;
-          }
-      }
-    }
-    uksort($variables, "strnatcmp");
-
-    if ($variables) {
-      $i = 0;
-      foreach ($variables as $object) {
-        if (!$node->jsdoc_allow_private && $object->jsdoc_private) continue;
-
-        $title = $object->title;
-        if (strpos($object->title, $node->title . '.') === 0) {
-          $title = substr($object->title, strlen($node->title) + 1);
-        }
-        if (strpos($title, '.') !== false) continue;
-
-        $section_prefix = '';
-        if ($object->jsdoc_type == 'Function') {
-          if ($object->jsdoc_classlike) {
-            $section_title = 'Classes';
-            $section_weight = '-24';
-            $section_index = 'jsdoc_classes';
-          }
-          else {
-            $section_title = 'Functions';
-            $section_weight = '-25';
-            $section_index = 'jsdoc_functions';
-          }
-        }
-        else {
-          $section_title = 'Fields';
-          $section_weight = '-27';
-          $section_index = 'jsdoc_fields';
-          if ($object->jsdoc_type) {
-            $section_prefix = l($object->jsdoc_formatted['type'], jsdoc_object_node_load(jsdoc_get_project($object), jsdoc_get_version($object), $object->jsdoc_type)->jsdoc_url) . $object->jsdoc_formatted['separator'];
-          }
-        }
-  
-        $node->content['detail'][$section_index]['#type'] = 'fieldset';
-        $node->content['detail'][$section_index]['#title'] = t($section_title);
-        $node->content['detail'][$section_index]['#collapsible'] = true;
-        $node->content['detail'][$section_index]['#weight'] = $section_weight;
-        $node->content['detail'][$section_index][$object->title] = array(
-          '#type' => 'item',
-          '#value' => $section_prefix . l($title, $object->jsdoc_url) . (($object->teaser) ? ': ' . $object->teaser : ''),
-          '#weight' => $i++
-        );
-      }
-    }
-  }
-  else {
-    // This object exists in more than one resource and a specification hasn't been made, or is never explicitly declared
-    // Either way, let's treat is like a normal object
-    
-    if ($node->jsdoc_type) {
-      $node->content['detail']['jsdoc_type'] = array(
-        '#type' => 'item',
-        '#title' => t('Object Type'),
-        '#value' => ($node->jsdoc_initialized) ? $node->jsdoc_formatted['class_type'] : $node->jsdoc_formatted['type'],
-        '#weight' => -15
-      );      
-    }
-
-    if ($node->jsdoc_renames) {
-      $node->content['detail']['jsdoc_renames'] = array(
-        '#type' => 'fieldset',
-        '#title' => t('Renamed'),
-        '#weight' => -12
-      );
-      foreach ($node->jsdoc_renames as $rename) {
-        $node->content['detail']['jsdoc_renames'][] = array(
-          '#type' => 'item',
-          '#value' => l($rename->title, $rename->jsdoc_url)
-        );
-      }
-    }
-
-    jsdoc_get_parents($node);
-    if ($node->jsdoc_parents['all']) {
-      $node->content['detail']['jsdoc_parents'] = array(
-        '#weight' => -12
-      );
-      foreach ($node->jsdoc_parents['all'] as $weight => $parent) {
-        $parent = jsdoc_object_node_load(jsdoc_get_project($node), jsdoc_get_version($node), $parent);
-        $node->content['detail']['jsdoc_parents'][$parent->title] = array(
-          '#type' => 'item',
-          '#weight' => $weight
-        );
-        if ($parent->jsdoc_url) {
-          $node->content['detail']['jsdoc_parents'][$parent->title]['#value'] = l($parent->title, $parent->jsdoc_url);
-        }
-        else {
-          $node->content['detail']['jsdoc_parents'][$parent->title]['#value'] = $parent->title;
-        }
-        if (!$weight) {
-          if (count($node->jsdoc_parents['all']) == 1) {
-            $node->content['detail']['jsdoc_parents'][$parent->title]['#title'] = t('Parent Object');
-          }
-          else {
-            $node->content['detail']['jsdoc_parents'][$parent->title]['#title'] = t('Parent Objects');
-          }
-        }
-      }
-    }
-
-    jsdoc_load_children($node, $view_as_private);
-    $i = 0;
-    foreach ($node->jsdoc_variables as $object) {
-      $title = $object->title;
-      if (strpos($object->title, $node->title . '.') === 0) {
-        $title = substr($object->title, strlen($node->title) + 1);
-      }
-      if (strpos($title, '.') !== false) continue;
-
-      if (!$node->jsdoc_allow_private && $object->jsdoc_private) continue;
-
-      if ($object->jsdoc_type == 'Function') {
-        if ($object->jsdoc_classlike) {
-          $section_title = 'Classes';
-          $section_weight = '-24';
-          $section_index = 'jsdoc_classes';
-          $section_prefix = "";
-        }
-        else {
-          $section_title = 'Functions';
-          $section_weight = '-25';
-          $section_index = 'jsdoc_functions';
-          $section_prefix = "";
-        }
-      }
-      else {
-        $section_title = 'Fields';
-        $section_weight = '-27';
-        $section_index = 'jsdoc_fields';
-        $section_prefix = l($object->jsdoc_formatted['type'], jsdoc_object_node_load(jsdoc_get_project($object), jsdoc_get_version($object), $object->jsdoc_type)->jsdoc_url) . $object->jsdoc_formatted['separator'];
-      }
-
-      $node->content['detail'][$section_index]['#type'] = 'fieldset';
-      $node->content['detail'][$section_index]['#title'] = t($section_title);
-      $node->content['detail'][$section_index]['#collapsible'] = true;
-      $node->content['detail'][$section_index]['#weight'] = $section_weight;
-      $node->content['detail'][$section_index][$object->title] = array(
-        '#type' => 'item',
-        '#value' => $section_prefix . l($title, $object->jsdoc_url) . (($object->teaser) ? ': ' . $object->teaser : ''),
-        '#weight' => $i++
-      );
-    }
-  }
-  
-  return $node;
-}
-*/
-
 /**
 * Get the base objects for this project
 * 
@@ -2275,7 +1853,7 @@ function jsdoc_version_node_load($version_name, $project) {
     $project_nid = $project;
   }
   elseif (is_string($project)) {
-    $project_nid = jsdoc_project_node_load($project);
+    $project_nid = jsdoc_project_node_load($project)->nid;
   }
   elseif (is_object($project) && $project->nid) {
     $project_nid = $project->nid;
@@ -2317,7 +1895,7 @@ function jsdoc_resource_node_load($project, $version, $name) {
 /**
  * Custom version of node_load for objects
  */
-function jsdoc_object_node_load($name, $project, $version, $resource = false) {
+function jsdoc_object_node_load($name, $project=false, $version=false, $resource=false) {
   $lower_name = strtolower($name);
 
   $override_name = false;
@@ -2821,24 +2399,6 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
   }
 
   return drupal_render_form('jsdoc_object_form', $form);
-
-  /* Reimplement
-  if ($node->type == 'jsdoc_variable' && !$node->jsdoc_detail && empty($node->jsdoc_disambiguations) && !count($node->jsdoc_renames)) {
-    return drupal_not_found();    
-  }
-  if ($node->jsdoc_initialized || ($node->jsdoc_detail && $node->jsdoc_detail->jsdoc_initialized)) {
-    $node->jsdoc_initialized = true;
-  }
-  elseif (is_null($initialized)) {
-    $node->jsdoc_initialized = $node->jsdoc_classlike;
-  }
-  else {
-    $node->jsdoc_initialized = $initialized;
-  }
-  $node->jsdoc_allow_private = $allow_private;
-  drupal_set_title(check_plain($node->title));
-  return node_show($node, 0);
-  */
 }
 
 /**
