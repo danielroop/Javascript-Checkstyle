@@ -4041,13 +4041,15 @@ function theme_jsdoc_object_title($node) {
 
   $title .= $end;
 
+  /*
   if (jsdoc_get_type($node)) {
     $type_node = jsdoc_object_node_load(jsdoc_get_type($node), jsdoc_get_project($node), jsdoc_get_version($node));
     if ($type_node) {
       $title .= ': ' . l(jsdoc_get_type($node), $type_node->jsdoc_url);
     }
   }
-
+  */
+  
   return $title;
 }
 
@@ -4083,169 +4085,99 @@ function theme_jsdoc_object_mixins($mixins) {
     }
     $output .= l($mixin->node->title, $mixin->node->jsdoc_url);
     if ($mixin->mixin_from) {
-      $output .= '<sup>Mixin from: ' . $mixin->mixin_from . '</sup>';
+      $output .= '<small> (from ' . $mixin->mixin_from . ')</small>';
     }
 
     ++$counter;
   }
+  if(!$counter){ $output .= 'None'; }
   return $output . '</div>';
 }
 
 function theme_jsdoc_object_children($children) {
-	/*
-	echo("<pre>");
-	print_r($children);
-	echo("</pre>");
-	*/
-	
   $output = '<div class="jsdoc_object_children">';
   $output .= '<fieldset>';
   $output .= '<legend>Fields</legend>';
   $output .= '<div class="fieldset-wrapper">';
 
-	$statics = array();
-	$functions = array();
-	$constructors = array();
-	$objects = array();
-
-	foreach($children as $child){
-		if($child->type){
-			if($child->type->title=="Constructor"){
-				$constructors[]=$child;
-			}
-			else if($child->type->title=="Function"){
-				$functions[]=$child;
-			}
-			else if($child->normal){
-				$statics[]=$child;
-			}
-			else {
-				$objects[]=$child;
-			}
-		} else {
-			$objects[]=$child;
-		}
-	}
+  $statics = array();
+  $functions = array();
+  $constructors = array();
+  $objects = array();
+  foreach($children as $child){
+    if($child->type){
+      if($child->type->title=="Constructor") $constructors[]=$child;
+      else if($child->type->title=="Function") $functions[]=$child;
+      else if($child->normal) $statics[]=$child;
+      else $objects[]=$child;
+    } else {
+      $objects[]=$child;
+    }
+  }
   
-	if(count($statics)){
-	  $output .= '<h2>Statics</h2>';
-	  foreach ($statics as $child) {
-		$output .= '<div class="form-item">';
-		$output .= l($child->title, $child->url);
-		if ($child->type) {
-		  $output .= ': <small>' . $child->type->a . '</small> ';
-		}
-		if ($child->inheritance) {
-			$output .= ' <div><small>';
-		  if ($child->override) {
-			$output .= ' Overrides ';
-		  }
-		  else {
-			$output .= ' Defined by ';
-		  }
-		  foreach ($child->inheritance as $i => $parent) {
-			if ($i) {
+  $types = array("Statics"=>$statics, "Constructors"=>$constructors, "Properties"=>$objects, "Functions"=>$functions);
+  foreach($types as $key=>$arr){
+    if(count($arr)){
+      $output .= '<h2>' . $key . '</h2>';
+      foreach ($arr as $child) {
+      $output .= '<div class="form-item">';
+      $output .= l($child->title, $child->url);
+      if ($child->type && $key!='Functions' && $key!="Constructors") {
+        $output .= ': <small>' . $child->type->a . '</small> ';
+      }
+      if($child->parameters){
+		  $output .= '(';
+		  foreach ($child->parameters as $i => $param){
+			if($i){
 			  $output .= ', ';
 			}
-			$output .= l($parent->title, $parent->url);
-		  }
-		  $output .= '</small></div>';
-		}
-		if ($child->summary) {
-		  $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
-		}
-		$output .= '</div>';
-	  }
-	}
-
-
-	if(count($constructors)){
-	  $output .= '<h2>Constructors</h2>';
-	  foreach ($constructors as $child) {
-		$output .= '<div class="form-item">';
-		$output .= l($child->title, $child->url);
-		if ($child->inheritance) {
-			$output .= ' <div><small>';
-		  if ($child->override) {
-			$output .= ' Overrides ';
-		  }
-		  else {
-			$output .= ' Defined by ';
-		  }
-		  foreach ($child->inheritance as $i => $parent) {
-			if ($i) {
-			  $output .= ', ';
+		    if($param->types){
+			  $output .= '/* ';
+			  foreach ($param->types as $j => $type){
+				if($j) {
+				  $output .= '|';
+				}
+				$output .= $type->a ;
+			  }
+			  if($param->repeating){
+				$output .= '...';
+			  }
+			  if($param->optional){
+				$output .= '?';
+			  }
+			  $output .= ' */ ';
 			}
-			$output .= l($parent->title, $parent->url);
-		  }
-		  $output .= '</small></div>';
-		}
-		if ($child->summary) {
-		  $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
-		}
-		$output .= '</div>';
-	  }
-	}
-	 
-	if(count($objects)){
-	  $output .= '<h2>Objects</h2>';
-	  foreach ($objects as $child) {
-		$output .= '<div class="form-item">';
-		$output .= l($child->title, $child->url);
-		if ($child->type) {
-		  $output .= ': <small>' . $child->type->a . '</small> ';
-		}
-		if ($child->inheritance) {
-			$output .= ' <div><small>';
-		  if ($child->override) {
-			$output .= ' Overrides ';
-		  }
-		  else {
-			$output .= ' Defined by ';
-		  }
-		  foreach ($child->inheritance as $i => $parent) {
-			if ($i) {
-			  $output .= ', ';
-			}
-			$output .= l($parent->title, $parent->url);
-		  }
-		  $output .= '</small></div>';
-		}
-		if ($child->summary) {
-		  $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
-		}
-		$output .= '</div>';
-	  }
-	}
-
-	if(count($functions)){
-	  $output .= '<h2>Functions</h2>';
-	  foreach ($functions as $child) {
-		$output .= '<div class="form-item">';
-		$output .= l($child->title, $child->url);
-		if ($child->inheritance) {
-			$output .= ' <div><small>';
-		  if ($child->override) {
-			$output .= ' Overrides ';
-		  }
-		  else {
-			$output .= ' Defined by ';
-		  }
-		  foreach ($child->inheritance as $i => $parent) {
-			if ($i) {
-			  $output .= ', ';
-			}
-			$output .= l($parent->title, $parent->url);
-		  }
-		  $output .= '</small></div>';
-		}
-		if ($child->summary) {
-		  $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
-		}
-		$output .= '</div>';
-	  }
-	}
-
+			$output .= $param->name;
+          }
+		  $output .= ') ';
+      }
+	  else if($key=="Functions"){
+        $output .= '() ';
+      }
+      if ($child->inheritance) {
+        $output .= ' <div><small>';
+        if ($child->override) {
+          $output .= ' Overrides ';
+        }
+        else {
+          $output .= ' Defined by ';
+        }
+        foreach ($child->inheritance as $i => $parent) {
+          if ($i) {
+            $output .= ', ';
+          }
+          $output .= l($parent->title, $parent->url);
+        }
+        $output .= '</small></div>';
+      }
+      if ($child->summary) {
+        $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
+      }
+      $output .= '</div>';
+      }
+    }
+  }
+  
   $output .= '</div>';
   $output .= '</fieldset>';
   $output .= '</div>';
@@ -4260,7 +4192,7 @@ function theme_jsdoc_object_prototype_chain($chain) {
   $output = '<div class="form-item"><label>Prototype Chain:</label>' ;
   foreach ($chain as $i => $node) {
     if ($i) {
-      $output .= ' -&gt; ';
+      $output .= ' &raquo; ';
     }
     $output .= l($node->title, $node->jsdoc_url);
   }
