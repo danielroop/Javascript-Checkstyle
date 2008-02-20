@@ -156,133 +156,32 @@ function jsdoc_menu($may_cache) {
         $items[] = $item;
       }
     }
-
-    /*
-    if (arg(0) == 'jsdoc' && arg(3)) {
-      // jsdoc/namespace/'HEAD'/resource/object
-      if (arg(4) && arg(4) != 'view' && arg(4) != 'edit' && arg(4) != 'private') {
-        $item = arg(3) . '/' . arg(4);
-        $object = $node = jsdoc_object_node_load(arg(4), arg(1), arg(2), str_replace('__', '/', arg(3)));
-      }
-      // jsdoc/namespace/'HEAD'/object
-      else {
-        $item = arg(3);
-        $object = $node = jsdoc_object_node_load(arg(3), arg(1), arg(2));
-      }
-
-      if (jsdoc_get_variable_object($node)) {
-        $object = jsdoc_get_variable_object($node);
-      }
-      $items[] = array('path' => 'jsdoc/' . arg(1) . '/' . arg(2) . '/' . $item,
-        'title' => t('View'),
-        'callback' => 'jsdoc_object_node_view',
-        'callback arguments' => array($node),
-        'access' => node_access('view', $node),
-        'type' => MENU_CALLBACK
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view',
-        'title' => t('View'),
-        'type' => MENU_DEFAULT_LOCAL_TASK,
-        'weight' => -10
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private',
-        'title' => t('View w/ Private'),
-        'callback' => 'jsdoc_object_node_view',
-        'callback arguments' => array($node, null, true),
-        'access' => node_access('view', $node),
-        'weight' => -9,
-        'type' => MENU_LOCAL_TASK
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/edit',
-        'title' => t('Edit'),
-        'callback' => 'jsdoc_object_edit_redirect',
-        'callback arguments' => array($node),
-        'access' => node_access('update', $node),
-        'weight' => 1,
-        'type' => MENU_LOCAL_TASK
-      );
-      $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/edit/' . arg(6),
-        'title' => t('Edit'),
-        'callback' => 'jsdoc_object_edit_redirect',
-        'callback arguments' => array($node, arg(6)),
-        'access' => node_access('update', $node),
-        'weight' => 1,
-        'type' => MENU_LOCAL_TASK
-      );
-
-      if (jsdoc_get_type($object) == 'Function') {
-        if (jsdoc_get_classlike($object) || jsdoc_is_initialized($object)) {
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/init',
-            'title' => t('Initialized'),
-            'type' => MENU_DEFAULT_LOCAL_TASK,
-            'weight' => -10
-          );
-          if (!jsdoc_is_initialized($object)) {
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/normal',
-              'title' => t('Uninitialized'),
-              'callback' => 'jsdoc_object_node_view',
-              'callback arguments' => array($node, false),
-              'access' => node_access('view', $node),
-              'type' => MENU_LOCAL_TASK
-            );
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/init',
-              'title' => t('Initialized'),
-              'type' => MENU_DEFAULT_LOCAL_TASK,
-              'weight' => -10
-            );
-            $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/normal',
-              'title' => t('Uninitialized'),
-              'callback' => 'jsdoc_object_node_view',
-              'callback arguments' => array($node, false, true),
-              'access' => node_access('view', $node),
-              'type' => MENU_LOCAL_TASK
-            );
-          }
-        }
-        else {
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/normal',
-            'title' => t('Uninitialized'),
-            'type' => MENU_DEFAULT_LOCAL_TASK,
-            'weight' => -10
-          );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/view/init',
-            'title' => t('Initialized'),
-            'callback' => 'jsdoc_object_node_view',
-            'callback arguments' => array($node, true),
-            'access' => node_access('view', $node),
-            'type' => MENU_LOCAL_TASK
-          );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/normal',
-            'title' => t('Uninitialized'),
-            'type' => MENU_DEFAULT_LOCAL_TASK,
-            'weight' => -10
-          );
-          $items[] = array('path' => 'jsdoc/'. arg(1) . '/' . arg(2) . '/' . $item . '/private/init',
-            'title' => t('Initialized'),
-            'callback' => 'jsdoc_object_node_view',
-            'callback arguments' => array($node, true, true),
-            'access' => node_access('view', $node),
-            'type' => MENU_LOCAL_TASK
-          );
-        }
-      }
-    }
-    */
   }
 
   return $items;
 }
 
 /**
- * shutdown function to make sure we always mark the last node processed.
+ * Impelementation of hook_block
  */
-function jsdoc_update_shutdown() {
-  global $last_change, $last_nid;
-
-  if ($last_change && $last_nid) {
-    variable_set('jsdoc_cron_last', $last_change);
-    variable_set('jsdoc_cron_last_nid', $last_nid);
+function jsdoc_block($op='list', $delta=0) {
+  if ($op == 'list') {
+    $block[0]['info'] = t('JavaScript Documentation Search');
+    return $block;
   }
+  else if ($op == 'view') {
+    $block['subject'] = 'Search';
+    $block['content'] = drupal_get_form('_jsdoc_block_search');
+    return $block;
+  }
+}
+
+function _jsdoc_block_search(){
+  $form['search'] = array(
+    '#type' => 'textfield'
+  );
+
+  return $form;
 }
 
 /**
@@ -1536,6 +1435,10 @@ function jsdoc_get_variable_object(&$node) {
   return $node;
 }
 
+function jsdoc_is_function(&$node) {
+  return (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Constructor');
+}
+
 function jsdoc_get_type(&$node) {
   if (isset($node->jsdoc_type)) {
     return $node->jsdoc_type;
@@ -2783,30 +2686,6 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     );
   }
 
-  if (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Constructor') {
-    // TODO: jsdoc_get_parameters_themed goes here
-    $parameters = _jsdoc_get_parameters_themed($node);
-
-    if (count($parameters)) {
-      $form['parameters'] = array(
-        '#value' => theme('jsdoc_function_parameters', $parameters),
-        '#weight' => 20
-      );
-    }
-
-    $function = (object)array(
-      'source' => jsdoc_get_source($node),
-      'signature' => _jsdoc_build_function_signature($node, $parameters)
-    );
-    if (count($parameters)) {
-      $function->parameters = $parameters;
-    }
-    $form['function'] = array(
-      '#value' => theme('jsdoc_function_information', $function, $fields),
-      '#weight' => 30
-    );
-  }
-
   $mixin_chain = array();
   foreach ($prototype_chain as $prototype) {
     if ($prototype->title == 'Object') {
@@ -2909,6 +2788,30 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     }
   }
   uksort($children, "strnatcasecmp");
+
+  if (jsdoc_is_function($node)) {
+    // TODO: jsdoc_get_parameters_themed goes here
+    $parameters = _jsdoc_get_parameters_themed($node);
+
+    if (count($parameters)) {
+      $form['parameters'] = array(
+        '#value' => theme('jsdoc_function_parameters', $parameters),
+        '#weight' => 20
+      );
+    }
+
+    $function = (object)array(
+      'source' => jsdoc_get_source($node),
+      'signature' => _jsdoc_build_function_signature($node, $parameters)
+    );
+    if (count($parameters)) {
+      $function->parameters = $parameters;
+    }
+    $form['function'] = array(
+      '#value' => theme('jsdoc_function_information', $function, $children),
+      '#weight' => 30
+    );
+  }
 
   if (count($children)) {
     $form['children'] = array(
