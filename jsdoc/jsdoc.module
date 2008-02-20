@@ -165,14 +165,16 @@ function jsdoc_menu($may_cache) {
  * Impelementation of hook_block
  */
 function jsdoc_block($op='list', $delta=0) {
-  if ($op == 'list') {
-    $block[0]['info'] = t('JavaScript Documentation Search');
-    return $block;
-  }
-  else if ($op == 'view') {
-    $block['subject'] = 'Search';
-    $block['content'] = drupal_get_form('_jsdoc_block_search');
-    return $block;
+  if (module_exists('search')) {
+    if ($op == 'list') {
+      $block[0]['info'] = t('JavaScript Documentation Search');
+      return $block;
+    }
+    else if ($op == 'view') {
+      $block['subject'] = 'Search';
+      $block['content'] = drupal_get_form('_jsdoc_block_search');
+      return $block;
+    }
   }
 }
 
