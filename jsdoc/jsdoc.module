@@ -2765,7 +2765,11 @@ function _jsdoc_resource_get_or_create($name, $project_name) {
       'stick' => 0
     );
     node_save($node);
+    $is_new = $node->is_new;
     $node = _jsdoc_node_load($node->nid);
+    if ($is_new) {
+      $node->is_new = $is_new;
+    }
   }
   else {
     $node = _jsdoc_node_load($nid);
