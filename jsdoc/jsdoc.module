@@ -2999,7 +2999,7 @@ function jsdoc_get_resources(&$node, $environments) {
   return jsdoc_get_resources($node, $environments);
 }
 
-function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
+function _jsdoc_get_tree($environments, $parent = 0, $depth = -1, $visited=array()) {
   static $children, $parents, $terms;
 
   $depth++;
@@ -3032,7 +3032,11 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1) {
       $tree[] = $term;
 
       if ($parents[$parent[1]]) {
-        $tree = array_merge($tree, _jsdoc_get_tree($environments, $parent[1], $depth));
+        if (in_array($parent[1], $visited)) {
+          return $tree;
+        }
+        $visited[] = $parent[1];
+        $tree = array_merge($tree, _jsdoc_get_tree($environments, $parent[1], $depth, $visited));
       }
     }
   }
