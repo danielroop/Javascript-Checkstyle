@@ -1171,6 +1171,9 @@ function jsdoc_variable_update($node) {
  * Implementation of hook_delete
  */
 function jsdoc_variable_delete(&$node) {
+  if (function_exists('search_wipe')) {
+    search_wipe($node->nid, 'jsdoc_' . jsdoc_get_version($node)->title);
+  }
   db_query("DELETE FROM {jsdoc_variables} WHERE nid = %d", $node->nid);
   db_query("DELETE FROM {jsdoc_variable_hierarchy} WHERE nid = %d OR parent_nid = %d", $node->nid, $node->nid);
   $query = db_query("SELECT nid FROM {node} WHERE type = 'jsdoc_object' AND title = '%s'", $node->title);
