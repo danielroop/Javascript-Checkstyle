@@ -1962,7 +1962,11 @@ function jsdoc_object_nodes_load($name, $project=false, $version=false, $resourc
     $project_nid = $project;
   }
   elseif (is_string($project)) {
-    $project_nid = jsdoc_project_node_load($project)->nid;
+    $project = jsdoc_project_node_load($project);
+    $project_nid = $project->nid;
+    if (!$version) {
+      $version = jsdoc_get_version($project);
+    }
   }
 
   // Resolve the version the best that we can
@@ -2117,6 +2121,9 @@ function jsdoc_jsonp($batch=false, $json=false) {
     $nodes = jsdoc_object_nodes_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], $_JSON['exact']);
     foreach ($nodes as $node) {
       $formatted = (object)array('name' => $node->title);
+      if ($_JSON['exact'] && count($nodes) > 1) {
+        $formatted->project = jsdoc_get_project($node)->title;
+      }
       foreach ($attributes as $attribute) {
         switch ($attribute) {
           case 'summary':
