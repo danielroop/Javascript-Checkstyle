@@ -2195,17 +2195,7 @@ function jsdoc_variables_node_view($nodes) {
  * A menu callback
  */
 function jsdoc_variable_node_view($node) {
-  $node = node_prepare($node);
-
-  $form = $node->content;
-
-  if (jsdoc_get_teaser($node)) {
-    $form['body']['#value'] = jsdoc_get_teaser($node);
-    if (jsdoc_get_body($node)) {
-      $form['body']['#value'] .= '\n\n';
-    }
-  }
-  $form['body']['#value'] .= jsdoc_get_body($node);
+  $form = _jsdoc_node_prepare($node);
 
   $resources = jsdoc_get_variable_resources($node);
 
@@ -2254,7 +2244,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
 
   drupal_set_title(theme('jsdoc_object_title', _jsdoc_get_title_themed($node)));
 
-  $form = node_prepare($node, false)->content;
+  $form = _jsdoc_node_prepare($node);
 
   $form['require'] = array(
     '#value' => theme('jsdoc_object_require', jsdoc_get_provide($node)),
@@ -2263,11 +2253,6 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
 
   $form['resource'] = array(
     '#value' => theme('jsdoc_object_resource', jsdoc_get_resource($node))
-  );
-
-  $form['body'] = array(
-    '#value' => $node->teaser . $node->body,
-    '#weight' => 0
   );
 
   $prototype_chain = jsdoc_get_prototype_chain($node, array(3, 4));
@@ -3357,6 +3342,18 @@ function _jsdoc_theme_clone($node) {
   return $clone;
 }
 
+function _jsdoc_node_prepare($node) {
+  $form = node_prepare($node)->content;
+  $form['summary'] = node_prepare($node, true)->content['body'];
+  --$form['summary']['#weight'];
+
+  $form['summary']['#value'] = theme('jsdoc_object_summary', $teaser);
+  $form['description']['#value'] = theme('jsdoc_object_description', $teaser, $form['body']['#value']);
+  unset($form['body']);
+
+  return $form;
+}
+
 function _jsdoc_node_load($param = array(), $revision = NULL, $reset = NULL) {
   static $nodes;
 
@@ -3769,4 +3766,12 @@ function theme_jsdoc_function_parameters($parameters) {
   $output .= '</div>';
 
   return $output;
+}
+
+function theme_jsdoc_object_summary($summary) {
+  return '';
+}
+
+function theme_jsdoc_object_description($summary, $description) {
+  return $summary . $description;
 }
