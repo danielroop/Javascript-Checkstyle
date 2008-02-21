@@ -2336,6 +2336,9 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     foreach ($children_all as $type => $items) {
       $type = substr($type, 0, -1);
       foreach ($items as $item) {
+        if ($type == 'variable' && $item->title != $node->title) {
+          continue;
+        }
         if (is_object($item)) {
           $title = $item->title;
           if ($mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
