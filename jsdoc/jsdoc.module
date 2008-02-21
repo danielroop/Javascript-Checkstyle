@@ -2479,6 +2479,8 @@ function _jsdoc_get_title_themed($node) {
   }
   $themed->crumbs[] = $end;
 
+  drupal_set_breadcrumb($themed->crumbs);
+
   return $themed;  
 }
 
