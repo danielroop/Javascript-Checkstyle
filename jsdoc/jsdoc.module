@@ -179,17 +179,11 @@ function jsdoc_block($op='list', $delta=0) {
 
 function _jsdoc_block_search() {
   if (module_exists('search')) {
-    $form['search'] = array(
-      '#type' => 'textfield',
-      '#size' => null,
-      '#maxlength' => null
+    return array(
+      'search' => array(
+        '#value' => theme('jsdoc_search', 'search')
+      )
     );
-    $form['submit'] = array(
-      '#type' => 'submit',
-      '#value' => t('Go')
-    );
-
-    return $form;
   }
 }
 
@@ -3830,4 +3824,8 @@ function theme_jsdoc_object_examples($examples) {
   $output .= implode('', $examples);
   $output .= '</div></fieldset></div>';
   return $output;
+}
+
+function theme_jsdoc_search($name) {
+  return '<div class="form-item"><input class="form-text" name="' . $name . '" /> <input class="form-submit" type="submit" value="Go" /></div>';
 }
