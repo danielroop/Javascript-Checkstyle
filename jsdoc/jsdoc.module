@@ -167,12 +167,21 @@ function jsdoc_block($op='list', $delta=0) {
   if (module_exists('search')) {
     if ($op == 'list') {
       $block[0]['info'] = t('JavaScript Documentation Search');
+      $block[1]['info'] = t('JavaScript Namespace List');
       return $block;
     }
-    else if ($op == 'view') {
-      $block['subject'] = 'Search';
-      $block['content'] = drupal_get_form('_jsdoc_block_search');
-      return $block;
+    elseif ($op == 'view') {
+      if ($delta == 0) {
+        $block['subject'] = 'Search';
+        $block['content'] = preg_replace('%ignore.*endignore%s', theme('jsdoc_search', 'search'), drupal_get_form('_jsdoc_block_search'));
+        return $block;
+      }
+      elseif ($delta == 1) {
+        $namespaces = unserialize(cache_get('jsdoc_namespaces', 'cache')->data);
+        $block['subject'] = 'Objects';
+        $block['content'] = theme('jsdoc_namespaces', $namespaces);
+        return $block;
+      }
     }
   }
 }
@@ -180,8 +189,18 @@ function jsdoc_block($op='list', $delta=0) {
 function _jsdoc_block_search() {
   if (module_exists('search')) {
     return array(
+      'ignore' => array(
+        '#value' => 'ignore'
+      ),
       'search' => array(
-        '#value' => theme('jsdoc_search', 'search')
+        '#type' => 'textfield'
+      ),
+      'go' => array(
+        '#type' => 'submit',
+        '#value' => 'Go'
+      ),
+      'endignore' => array(
+        '#value' => 'endignore'
       )
     );
   }
@@ -402,23 +421,13 @@ function jsdoc_cron() {
     else {
       _jsdoc_init();
 
-      $ignores = array();
-      $query = db_query("SELECT parent.title FROM {jsdoc_variable_hierarchy} AS jvh JOIN {node} AS child ON (child.vid = jvh.vid) JOIN {jsdoc_objects} AS jschild ON (jschild.vid = jvh.nid) JOIN {node} AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type NOT IN ('cascading', 'normal', 'alias') AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
-      while ($result = db_fetch_object($query)) {
-        $ignores[] = $result->title;
-      }
       $namespaces = array();
-      $query = db_query("SELECT parent.title FROM {jsdoc_variable_hierarchy} AS jvh JOIN {node} AS child ON (child.vid = jvh.vid) JOIN {jsdoc_objects} AS jschild ON (jschild.vid = jvh.nid) JOIN {node} AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type = 'normal' AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
-      while ($result = db_fetch_object($query)) {
-        $found = false;
-        foreach ($ignores as $ignore) {
-          if (strpos($ignore, $result->title . '.') === 0 || $ignore == $result->title) {
-            $found = true;
-            break;
+      foreach (jsdoc_projects() as $project) {
+        $query = db_query("SELECT n.title, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $project->title, $project->title);
+        while ($result = db_fetch_object($query)) {
+          if (jsdoc_is_namespace($result)) {
+            $namespaces[] = $result->title;
           }
-        }
-        if (!$found) {
-          $namespaces[] = $result->title;
         }
       }
       cache_set('jsdoc_namespaces', 'cache', serialize($namespaces));
@@ -1557,7 +1566,7 @@ function jsdoc_is_namespace(&$node) {
   $namespace = false;
 
   if (jsdoc_get_type($node) == 'Object' || jsdoc_is_initialized($node)) {
-    $query = db_query("SELECT 1 FROM node n JOIN jsdoc_objects jo ON (jo.vid = n.vid) WHERE jo.type = 'Function' AND n.title LIKE '%s' AND n.title NOT LIKE '%.toString' LIMIT 1", $node->title . '.%');
+    $query = db_query("SELECT 1 FROM node n JOIN jsdoc_objects jo ON (jo.vid = n.vid) WHERE jo.type = 'Function' AND jo.private = 0 AND jo.private_parent = 0 AND n.title LIKE '%s' AND n.title NOT LIKE '%.toString' LIMIT 1", $node->title . '.%');
     if (db_num_rows($query)) {
       $namespace = true;
     }
@@ -3798,5 +3807,14 @@ function theme_jsdoc_object_examples($examples) {
 }
 
 function theme_jsdoc_search($name) {
-  return '<div class="form-item"><input class="form-text" name="' . $name . '" /> <input class="form-submit" type="submit" value="Go" /></div>';
+  return '<div class="form-item"><input class="form-text" name="' . $name . '" /> <input class="form-submit" type="submit" name="op" value="Go" /></div>';
+}
+
+function theme_jsdoc_namespaces($namespaces) {
+  $output = '<ul>';
+  foreach ($namespaces as $namespace) {
+    $output .= "<li>$namespace</li>";
+  }
+  $output .= '</ul>';
+  return $output;
 }
