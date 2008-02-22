@@ -366,6 +366,7 @@ function jsdoc_cron() {
   if (_jsdoc_cron_validate_include()) {
     $files = variable_get('jsdoc_cron_files', array());
     if (!empty($files)) {
+      // Call this without caring about its return, just to handle any set up it does
       call_user_func(_jsdoc_base() . '_get_files');
       print count($files) . ' files left<br>';
     }else{
@@ -402,12 +403,12 @@ function jsdoc_cron() {
       _jsdoc_init();
 
       $ignores = array();
-      $query = db_query("SELECT parent.title FROM jsdoc_variable_hierarchy AS jvh JOIN node AS child ON (child.vid = jvh.vid) JOIN jsdoc_objects AS jschild ON (jschild.vid = jvh.nid) JOIN node AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type NOT IN ('cascading', 'normal', 'alias') AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
+      $query = db_query("SELECT parent.title FROM {jsdoc_variable_hierarchy} AS jvh JOIN {node} AS child ON (child.vid = jvh.vid) JOIN {jsdoc_objects} AS jschild ON (jschild.vid = jvh.nid) JOIN {node} AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type NOT IN ('cascading', 'normal', 'alias') AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
       while ($result = db_fetch_object($query)) {
         $ignores[] = $result->title;
       }
       $namespaces = array();
-      $query = db_query("SELECT parent.title FROM jsdoc_variable_hierarchy AS jvh JOIN node AS child ON (child.vid = jvh.vid) JOIN jsdoc_objects AS jschild ON (jschild.vid = jvh.nid) JOIN node AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type = 'normal' AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
+      $query = db_query("SELECT parent.title FROM {jsdoc_variable_hierarchy} AS jvh JOIN {node} AS child ON (child.vid = jvh.vid) JOIN {jsdoc_objects} AS jschild ON (jschild.vid = jvh.nid) JOIN {node} AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type = 'normal' AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
       while ($result = db_fetch_object($query)) {
         $found = false;
         foreach ($ignores as $ignore) {
@@ -422,13 +423,7 @@ function jsdoc_cron() {
       }
       cache_set('jsdoc_namespaces', 'cache', serialize($namespaces));
 
-      $timestamp = variable_get('jsdoc_cron_time', 0);
-      if ($timestamp && time() - $timestamp < 43200) {
-        // 12 hours
-        // return;
-      }
-      variable_set('jsdoc_cron_time', time());
-
+      // Build an array of ctimes from our cache table
       $file_ctimes = array();
       $query = db_query("SELECT ctime, cid, namespace, filepath FROM {jsdoc_cache}");
       while ($cache = db_fetch_object($query)) {
@@ -438,7 +433,6 @@ function jsdoc_cron() {
         $file_ctimes[$cache->namespace][$cache->filepath] = $cache;
       }
 
-      $count = 0;
       while (count($files)) {
         $list = array_shift($files);
 
@@ -449,7 +443,6 @@ function jsdoc_cron() {
           variable_set('jsdoc_cron_files', $files);
         }
 
-        ++$count;
         list($namespace, $file_name) = $list;
         unset($list);
         unset($contents);
@@ -457,10 +450,10 @@ function jsdoc_cron() {
         if (empty($files)) {
           print 'FINISHED';
         }
-        ob_flush();
         flush();
+        ob_flush();
 
-        set_time_limit(300); // 5 minutes
+        set_time_limit(60); // 1 minute
         // Cache the results from a parse in the file and reuse it if we can.
         $cache_dir = _jsdoc_get_base_path() . '/' . drupal_get_path('module', 'jsdoc') . '/cache/';
         $ctime = call_user_func(_jsdoc_base() . '_get_file_time', $namespace, $file_name);
@@ -569,10 +562,10 @@ function jsdoc_cron() {
         $files = variable_get('jsdoc_cron_files', array());
       }
 
-      // TODO: Delete items from cache
       if (!db_result(db_query("SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
-        // If all items are used (typically happens the first pass), then none of them are new.
-        // We can do this because if nothing is missing, then all then new things are really new.
+        // If all items are used, then none of them are new.
+        // We can do this because if nothing is missing,
+        // then all then new things are really new.
         db_query("UPDATE {jsdoc_objects} SET new = 0");
       }
     }
@@ -2973,7 +2966,7 @@ function jsdoc_get_prototype_chain($node, $environments, $output = array()) {
     $prototype = $parents->chain['prototype'][0];
   }
   if ($prototype) {
-    if ($parent = jsdoc_object_node_load($prototype, jsdoc_get_project($node), jsdoc_get_version($node), $node->jsdoc_provide_nids)) {
+    if ($parent = jsdoc_object_node_load($prototype, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_resources($node)->jsdoc_provide_nids)) {
       return jsdoc_get_prototype_chain($parent, $environments, $output);
     }
   }
@@ -3078,8 +3071,8 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1, $visited=array
 
   if ($parents[$parent]) {
     foreach ($parents[$parent] as $parent) {
-      if (isset($terms[$parent[1]])) {
-        $term = $terms[$parent[1]];
+      if (isset($terms[$parent[0]])) {
+        $term = $terms[$parent[0]];
       }
       else {
         $term = (object)array('nid' => $parent[0], 'vid' => $parent[1]);
@@ -3087,15 +3080,15 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1, $visited=array
       }
 
       $term->depth = $depth;
-      $term->children = $children[$parent[1]];
+      $term->children = $children[$parent[0]];
       $tree[] = $term;
 
-      if ($parents[$parent[1]]) {
-        if (in_array($parent[1], $visited)) {
+      if ($parents[$parent[0]]) {
+        if (in_array($parent[0], $visited)) {
           return $tree;
         }
-        $visited[] = $parent[1];
-        $tree = array_merge($tree, _jsdoc_get_tree($environments, $parent[1], $depth, $visited));
+        $visited[] = $parent[0];
+        $tree = array_merge($tree, _jsdoc_get_tree($environments, $parent[0], $depth, $visited));
       }
     }
   }
