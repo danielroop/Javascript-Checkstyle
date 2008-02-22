@@ -82,7 +82,7 @@ function jsdoc_menu($may_cache) {
     );
   }
   else {
-    if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
+    if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
       $items[] = array('path' => 'jsdoc/manage',
         'title' => t('Manage Documentation Changes'),
         'callback' => 'drupal_get_form',
@@ -695,42 +695,6 @@ function jsdoc_help($section = '') {
 // =====
 
 function jsdoc_manage($edit = array()) {
-  // Resources
-  if ($resource = db_fetch_object(db_query("SELECT nid, vid, version FROM {jsdoc_resources} WHERE used = 0"))) {
-    $form['jsdoc_changes']['#tree'] = true;
-    $query = db_query("SELECT nid, vid FROM {jsdoc_resources} WHERE new = 1 AND version = %d", $resource->version);
-    $news = array(
-      '#type' => 'select',
-      '#title' => t('Renamed To'),
-      '#options' => array('0' => '')
-    );
-    while($result = db_fetch_object($query)) {
-      $node = _jsdoc_node_load($result->nid, $result->vid);
-      $news['#options'][$node->nid . '_' . $node->vid] = $node->title;
-    }
-
-    $node = _jsdoc_node_load($resource->nid, $resource->vid);
-
-    $form['jsdoc_changes']['resources'][$node->nid][$node->vid] = array(
-      '#type' => 'fieldset',
-      '#title' => $node->title
-    );
-    $form['jsdoc_changes']['resources'][$node->nid][$node->vid]['delete'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Deleted')
-    );
-
-    if ($form['jsdoc_changes']['resources']) {
-      if (count($news['#options']) > 1) {
-            $form['jsdoc_changes']['resources'][$node->nid][$node->vid]['move'] = $news;
-      }
-      $form['jsdoc_changes']['resources']['#type'] = 'fieldset';
-      $form['jsdoc_changes']['resources']['#title'] = t('Removed Resources');
-      $form['jsdoc_changes']['resources']['#collapsible'] = true;
-      $form['jsdoc_changes']['resources']['#tree'] = true;
-    }
-  }
-
   // Objects
   if ($object = db_fetch_object(db_query("SELECT nid, vid, version FROM {jsdoc_objects} WHERE used = 0"))) {
     $form['jsdoc_changes']['#tree'] = true;
