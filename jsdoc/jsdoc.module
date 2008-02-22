@@ -1550,6 +1550,21 @@ function jsdoc_get_child_mixins(&$node, $with_private=false) {
   return jsdoc_get_children($node, $with_private)->mixins;
 }
 
+function jsdoc_is_namespace(&$node) {
+  if (isset($node->jsdoc_namespace)) {
+    return $node->jsdoc_namespace;
+  }
+  $namespace = false;
+
+  if (jsdoc_get_type($node) == 'Object' || jsdoc_is_initialized($node)) {
+    $query = db_query("SELECT 1 FROM node n JOIN jsdoc_objects jo ON (jo.vid = n.vid) WHERE jo.type = 'Function' AND n.title LIKE '%s' AND n.title NOT LIKE '%.toString' LIMIT 1", $node->title . '.%');
+    if (db_num_rows($query)) {
+      $namespace = true;
+    }
+  }
+  return ($node->jsdoc_namespace = $namespace);
+}
+
 function jsdoc_get_children(&$node, $with_private=false) {
   if (isset($node->jsdoc_variables)) {
     return (object)array(
@@ -2409,10 +2424,8 @@ function jsdoc_object_edit_redirect($node, $resource=false) {
 }
 
 function _jsdoc_get_title_themed($node) {
-  $themed = (object)array(
-    'title' => $node->title,
-    'crumbs' => array()
-  );
+  $themed = _jsdoc_get_object_themed($node);
+  $themed->crumbs = array();
 
   if ($type = jsdoc_get_type($node)) {
     $type = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
@@ -2461,7 +2474,8 @@ function _jsdoc_get_object_themed($node, $title=null) {
     'title' => $title,
     'url' => $node->jsdoc_url,
     'summary' => jsdoc_get_teaser($node),
-    'singleton' => jsdoc_is_initialized($node)
+    'singleton' => jsdoc_is_initialized($node),
+    'namespace' => jsdoc_is_namespace($node)
   );
 
   if ($object->url) {
