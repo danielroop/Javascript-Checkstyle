@@ -3376,10 +3376,13 @@ function _jsdoc_theme_clone($node) {
 }
 
 function _jsdoc_node_prepare($node) {
+  $node->teaser = jsdoc_get_teaser($node);
+  $node->body = jsdoc_get_body($node);
   $form = node_prepare($node)->content;
   $form['summary'] = node_prepare($node, true)->content['body'];
   --$form['summary']['#weight'];
 
+  $teaser = $form['summary']['#value'];
   $form['summary']['#value'] = theme('jsdoc_object_summary', $teaser);
   $form['description']['#value'] = theme('jsdoc_object_description', $teaser, $form['body']['#value']);
   unset($form['body']);
