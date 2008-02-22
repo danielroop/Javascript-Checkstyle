@@ -407,6 +407,27 @@ function jsdoc_cron() {
     else {
       _jsdoc_init();
 
+      $ignores = array();
+      $query = db_query("SELECT parent.title FROM jsdoc_variable_hierarchy AS jvh JOIN node AS child ON (child.vid = jvh.vid) JOIN jsdoc_objects AS jschild ON (jschild.vid = jvh.nid) JOIN node AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type NOT IN ('cascading', 'normal', 'alias') AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
+      while ($result = db_fetch_object($query)) {
+        $ignores[] = $result->title;
+      }
+      $namespaces = array();
+      $query = db_query("SELECT parent.title FROM jsdoc_variable_hierarchy AS jvh JOIN node AS child ON (child.vid = jvh.vid) JOIN jsdoc_objects AS jschild ON (jschild.vid = jvh.nid) JOIN node AS parent ON (parent.vid = jvh.parent_vid) WHERE jvh.type = 'normal' AND (parent.title LIKE 'dojo.%'  OR parent.title LIKE 'dojox.%' OR parent.title LIKE 'dijit.%') AND jschild.private = 0 AND jschild.private_parent = 0 GROUP BY BINARY parent.title ORDER BY parent.title");
+      while ($result = db_fetch_object($query)) {
+        $found = false;
+        foreach ($ignores as $ignore) {
+          if (strpos($ignore, $result->title . '.') === 0 || $ignore == $result->title) {
+            $found = true;
+            break;
+          }
+        }
+        if (!$found) {
+          $namespaces[] = $result->title;
+        }
+      }
+      cache_set('jsdoc_namespaces', 'cache', serialize($namespaces));
+
       $timestamp = variable_get('jsdoc_cron_time', 0);
       if ($timestamp && time() - $timestamp < 43200) {
         // 12 hours
@@ -994,8 +1015,8 @@ function jsdoc_object_insert($node) {
 
   if (is_array(jsdoc_get_examples($node))) {
     foreach (jsdoc_get_examples($node) as $weight => $example) {
-      $example = _jsdoc_markup_text($example, jsdoc_get_version($node)->nid);
-      db_query("INSERT INTO {jsdoc_examples} (vid, nid, weight, example) VALUES (%d, %d, %d, '%s')", $node->vid, $node->nid, $weight, $example);
+      $example = preg_replace('%^([\s]*)\n%', '', $example);
+      db_query("INSERT INTO {jsdoc_examples} (vid, nid, weight, example, markedup) VALUES (%d, %d, %d, '%s', '%s')", $node->vid, $node->nid, $weight, $example, _jsdoc_markup_text($example, jsdoc_get_version($node)->nid));
     }
   }
 }
@@ -1029,8 +1050,8 @@ function jsdoc_object_update($node) {
 
   if (is_array(jsdoc_get_examples($node))) {
     foreach (jsdoc_get_examples($node) as $weight => $example) {
-      $example = _jsdoc_markup_text($example, jsdoc_get_version($node)->nid);
-      db_query("INSERT INTO {jsdoc_examples} (vid, nid, weight, example) VALUES (%d, %d, %d, '%s')", $node->vid, $node->nid, $weight, $example);
+      $example = preg_replace('%^([\s]*)\n%', '', $example);
+      db_query("INSERT INTO {jsdoc_examples} (vid, nid, weight, example, markedup) VALUES (%d, %d, %d, '%s', '%s')", $node->vid, $node->nid, $weight, $example, _jsdoc_markup_text($example, jsdoc_get_version($node)->nid));
     }
   }
 }
@@ -1340,15 +1361,15 @@ function jsdoc_get_parameters(&$node) {
   return $object->jsdoc_parameters;
 }
 
-function jsdoc_get_examples(&$node) {
+function jsdoc_get_examples(&$node, $markedup=false) {
   if (isset($node->jsdoc_examples)) {
     return $node->jsdoc_examples;
   }
 
   $node->jsdoc_examples = array();
-  $query = db_query("SELECT example FROM {jsdoc_examples} WHERE vid = %d ORDER BY weight", $node->vid);
+  $query = db_query("SELECT example, markedup FROM {jsdoc_examples} WHERE vid = %d ORDER BY weight", $node->vid);
   while ($example = db_fetch_object($query)) {
-    $node->jsdoc_examples[] = $example->example;
+    $node->jsdoc_examples[] = ($markedup) ? $example->markedup : $example->example;
   }
 
   return $node->jsdoc_examples;
@@ -2307,6 +2328,17 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     }
   }
 
+  $examples = array();
+  foreach (jsdoc_get_examples($node, true) as $weight => $example) {
+    $examples[] = theme('jsdoc_object_example', $example, $weight + 1);
+  }
+  if (!empty($examples)) {
+    $form['examples'] = array(
+      '#value' => theme('jsdoc_object_examples', $examples),
+      '#weight' => 35
+    );
+  }
+
   if (!empty($mixin_chain)) {
     $form['parent_mixins'] = array(
       '#value' => theme('jsdoc_object_mixins', $mixin_chain),
@@ -2884,12 +2916,13 @@ function _jsdoc_detail_update_joins($node) {
       $parent = _jsdoc_variable_get_or_create($node->jsdoc_instance, jsdoc_get_project($node), false);
       db_query("INSERT INTO {jsdoc_variable_hierarchy} (vid, nid, parent_vid, parent_nid, type, version) VALUES (%d, %d, %d, %d, '%s', %d)", $node->vid, $node->nid, $parent->vid, $parent->nid, 'instance', jsdoc_get_version($node)->nid);
       
-      // If object foo has function foo.bar and foo.bar uses the variable this.baz and is uninstantiated,
-      // `this` would refer to foo, making baz a property of foo
-      // So we create a normal join from foo.bar.baz to foo.baz by removing the second to last object section
-      if (preg_match('%^([^.]+)\.[^.]+\.([^.]+)$%', $node->jsdoc_instance, $match)) {
+      // If object foo has function foo.bar and foo.bar uses the variable
+      // this.baz and is uninstantiated, `this` would refer to foo,
+      // making baz a property of foo. So we create a normal join
+      // from foo.bar.baz to foo.baz by removing the second to last object section
+      if (preg_match('%^([^.]+)\.[^.]+\.([^.]+)$%', $node->title, $match)) {
         $parent = _jsdoc_variable_get_or_create($match[1] . '.' . $match[2], jsdoc_get_project($node), false);
-        db_query("INSERT INTO {jsdoc_variable_hierarchy} (vid, nid, parent_vid, parent_nid, type, version) VALUES (%d, %d, %d, %d, '%s', %d)", $node->vid, $node->nid, $parent->vid, $parent->nid, 'normal', jsdoc_get_version($node)->nid);
+        db_query("INSERT INTO {jsdoc_variable_hierarchy} (vid, nid, parent_vid, parent_nid, type, version) VALUES (%d, %d, %d, %d, '%s', %d)", $node->vid, $node->nid, $parent->vid, $parent->nid, 'cascading', jsdoc_get_version($node)->nid);
       }
     }
     if ($node->jsdoc_prototype) {
@@ -2919,7 +2952,7 @@ function _jsdoc_detail_update_joins($node) {
           db_query("INSERT INTO {jsdoc_variable_hierarchy} (vid, nid, parent_vid, parent_nid, type, subtype, version) VALUES (%d, %d, %d, %d, '%s', '%s', %d)", $node->vid, $node->nid, $parent->vid, $parent->nid, 'mixin', $subtype, jsdoc_get_version($node)->nid);
         }
       }
-    }    
+    }
     if ($node->jsdoc_chains) {
       foreach ($node->jsdoc_chains as $subtype => $chain) {
         $chain = array_unique($chain);
@@ -3387,8 +3420,14 @@ function _jsdoc_markup_code($text, $version, $base=false) {
   }
 
   _jsdoc_init();
-  $highlighter =& new GeSHi($text, 'javascript');
+  $language = 'javascript';
+  if (preg_match('%(^\W*<|>\W*$)%', $text)) {
+    $language = 'html4strict';
+    print $language;
+  }
+  $highlighter =& new GeSHi($text, $language);
   $highlighter->enable_classes();
+  $highlighter->enable_keyword_links(false);
   $highlighter->set_overall_style('color: #666;', true);
   $highlighter->set_tab_width(4);
   $highlighter->add_keyword_group(4, '', true, array('Math', 'Error', 'Array'));
@@ -3500,10 +3539,11 @@ function _jsdoc_markup_text($text, $version, $format = false){
   if (!$format) {
     $format = variable_get('jsdoc_input_format', 1);
   }
-  
+
   $text = check_markup($text, $format, FALSE);
-  if (preg_match_all('%<code>(.*?)</code>%s', $text, $matches, PREG_SET_ORDER)) {
+  if (preg_match_all('%(?:\s*(?:<pre>|<code>)\s*)+(.*?)(?:\s*(?:</pre>|</code>)\s*)+%s', $text, $matches, PREG_SET_ORDER)) {
     foreach ($matches as $match) {
+      $match[1] = str_replace('&lt;', '<', str_replace('&gt;', '>', $match[1]));
       $text = str_replace($match[0], _jsdoc_markup_code($match[1], $version), $text);
     }
   }
@@ -3700,7 +3740,7 @@ function theme_jsdoc_function_information($function, $fields) {
 
 function theme_jsdoc_function_parameters($parameters) {
   $output = '<div class="jsdoc_function_parameters">';
-  $output .= '<fieldset class="collapsible">';
+  $output .= '<fieldset>';
   $output .= '<legend>' . 'Parameters' . '</legend>';
   $output .= '<div class="fieldset-wrapper">';
   foreach ($parameters as $parameter) {
@@ -3774,4 +3814,18 @@ function theme_jsdoc_object_summary($summary) {
 
 function theme_jsdoc_object_description($summary, $description) {
   return $summary . $description;
+}
+
+function theme_jsdoc_object_example($example, $weight) {
+  return '<div class="form-item"><label>Example #' . $weight . '</label>' . $example . '</div>';
+}
+
+function theme_jsdoc_object_examples($examples) {
+  $output = '<div class="jsdoc_object_examples">';
+  $output .= '<fieldset>';
+  $output .= '<legend>Examples</legend>';
+  $output .= '<div class="fieldset-wrapper">';
+  $output .= implode('', $examples);
+  $output .= '</div></fieldset></div>';
+  return $output;
 }

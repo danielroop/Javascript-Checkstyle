@@ -138,7 +138,7 @@ function jsdoc_install() {
         nid integer NOT NULL REFERENCES {node} (nid), -- node-type: jsdoc_variable
         parent_vid integer NOT NULL REFERENCES {node_revisions} (vid),
         parent_nid integer NOT NULL REFERENCES {node} (vid), -- node-type: jsdoc_variable
-        type enum('normal', 'prototype', 'instance', 'alias', 'chain', 'mixin'), -- The type of join
+        type enum('normal', 'cascading', 'prototype', 'instance', 'alias', 'chain', 'mixin'), -- The type of join
         subtype enum('call', 'prototype', '') DEFAULT '', -- The subtype of the join
         version integer NOT NULL REFERENCES {node} (nid), -- node-type: jsdoc_version
         PRIMARY KEY (vid, parent_vid, type, subtype, version),
@@ -179,6 +179,7 @@ function jsdoc_install() {
         nid integer NOT NULL REFERENCES {node} (nid), -- node-type: jsdoc_object
         weight integer NOT NULL,
         example longtext NOT NULL,
+        markedup longtext NOT NULL,
       PRIMARY KEY (vid, weight)
       ) /*!40100 DEFAULT CHARACTER SET UTF8 */ ");
     break;

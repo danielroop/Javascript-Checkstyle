@@ -15,6 +15,7 @@ Read the EXTERNALS file in jsdoc/lib
 Installing the Module
 =====================
 
+http://drupal.org/node/70151
 Drop the jsdoc folder into sites/all/modules
 
 Enable the Module
