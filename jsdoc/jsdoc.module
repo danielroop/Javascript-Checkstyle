@@ -3423,7 +3423,6 @@ function _jsdoc_markup_code($text, $version, $base=false) {
   $language = 'javascript';
   if (preg_match('%(^\W*<|>\W*$)%', $text)) {
     $language = 'html4strict';
-    print $language;
   }
   $highlighter =& new GeSHi($text, $language);
   $highlighter->enable_classes();
