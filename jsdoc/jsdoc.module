@@ -1894,8 +1894,11 @@ function jsdoc_resource_node_load($project, $version, $name) {
 
 function jsdoc_object_node_load($name, $project=false, $version=false, $resource=false, $exact=true) {
   $nodes = jsdoc_object_nodes_load($name, $project, $version, $resource, $exact);
-  if (count($nodes)) {
+  if (count($nodes) == 1) {
     return $nodes[0];
+  }
+  elseif (!empty($nodes)) {
+    return $nodes;
   }
 }
 
@@ -2340,7 +2343,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
           if ($type == 'variable' && $node->title . '.' != substr($title, 0, strlen($node->title) + 1)) {
             continue;
           }
-          if ($mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
+          if (($type != 'variable' && jsdoc_get_type($mixin) == 'Constructor') && $mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
             $title = substr($title, strlen($mixin->title) + 1);
           }
           if ($children[$title]) {
