@@ -291,29 +291,29 @@ function jsdoc_search($op = 'search', $keys = null) {
       $project = search_query_extract($keys, 'project');
       $keys = search_query_insert($keys, 'project');
       $version = search_query_extract($keys, 'version');
+      if (empty($version)) {
+        $version = 'HEAD';
+        // TODO: Start using "ANY" here if no version is provided.
+      }
       $keys = search_query_insert($keys, 'version');
 
       $private = search_query_extract($keys, 'private');
       $keys = search_query_insert($keys, 'private');
 
-      if ($project && $version) {
-        $version = jsdoc_version_node_load($version, $project);
-        $version_title = $version->title;
-      }
-      else {
-        $version_title = 'HEAD';
+      $where = '1';
+      if (!$private) {
+        $where = "jo.private = 0 AND jo.private_parent = 0";
       }
 
-      $find = do_search('(' . implode('), (', _jsdoc_build_terms($keys)) . ')', 'jsdoc_' . $version_title);
+      $find = do_search(
+        '(' . implode('), (', _jsdoc_build_terms($keys)) . ')',
+        'jsdoc_' . $version,
+        "INNER JOIN {node} n ON (n.nid = i.sid) INNER JOIN {node} n2 ON (n2.title = n.title AND BINARY n2.title = BINARY n.title AND n2.type = 'jsdoc_object') INNER JOIN {jsdoc_objects} jo ON (jo.vid = n2.vid) INNER JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) INNER JOIN {node} n4 ON (n4.nid = jv.project)",
+        $where
+      );
       $results = array();
       foreach ($find as $item) {
         $node = _jsdoc_node_load($item->sid);
-        if ($version && jsdoc_get_version($node)->nid != $version->nid) {
-          continue;
-        }
-        if (!$private && jsdoc_is_private($node)) {
-          continue;
-        }
 
         $info = jsdoc_node_info();
         $results[] = array(
@@ -1490,6 +1490,10 @@ function jsdoc_is_function(&$node) {
 }
 
 function jsdoc_is_private(&$node) {
+  if ($node->type == 'jsdoc_object') {
+    return $node->jsdoc_private || $node->jsdoc_private_parent;
+  }
+
   $query = db_query("SELECT jo.private, jo.private_parent FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.version = %d GROUP BY jo.private, jo.private_parent", $node->title, $node->title, jsdoc_get_version($node)->nid);
   if (db_num_rows($query) == 1) {
     $result = db_fetch_object($query);
