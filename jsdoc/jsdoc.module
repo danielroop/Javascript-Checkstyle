@@ -578,7 +578,7 @@ function jsdoc_cron() {
             );
           }
           $version = jsdoc_version_node_load('HEAD', $namespace);
-          $query = db_query("SELECT n.title, MAX(n.vid) FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.version = %d AND jo.resource_vid = %d GROUP BY BINARY n.title", $version->nid, $resource_node->vid);
+          $query = db_query("SELECT n.title, MAX(n.vid) AS vid FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.used = 1 AND jo.version = %d AND jo.resource_vid = %d GROUP BY BINARY n.title", $version->nid, $resource_node->vid);
           while ($result = db_fetch_object($query)) {
             if (!array_key_exists($result->title, $contents)) {
               db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $result->vid);
@@ -589,7 +589,7 @@ function jsdoc_cron() {
         $files = variable_get('jsdoc_cron_files', array());
       }
 
-      if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
+      if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 LIMIT 1"))) {
         // If all items are used, then none of them are new.
         // We can do this because if nothing is missing,
         // then all then new things are really new.
