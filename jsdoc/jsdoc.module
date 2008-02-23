@@ -2225,10 +2225,14 @@ function jsdoc_variable_node_view($node) {
   $children = array();
   $variables = jsdoc_get_child_variables($node);
   if (!empty($variables)) {
-    uksort($variables, "strnatcasecmp");
     foreach ($variables as $child) {
-      $children[] = _jsdoc_get_object_themed($child);
+      $title = $child->title;
+      if (!jsdoc_is_namespace($node) && $node->title . '.' == substr($title, 0, strlen($node->title) + 1)) {
+        $title = substr($title, strlen($node->title) + 1);
+      }
+      $children[$title] = _jsdoc_get_object_themed($child, $title);
     }
+    uksort($children, "strnatcasecmp");
     $form['children'] = array(
       '#value' => theme('jsdoc_object_children', $children),
       '#weight' => 20
@@ -2356,7 +2360,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
           if ($type == 'variable' && $node->title . '.' != substr($title, 0, strlen($node->title) + 1)) {
             continue;
           }
-          if ($mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
+          if (!jsdoc_is_namespace($node) && $mixin->title . '.' == substr($title, 0, strlen($mixin->title) + 1)) {
             $title = substr($title, strlen($mixin->title) + 1);
           }
           if ($children[$title]) {
