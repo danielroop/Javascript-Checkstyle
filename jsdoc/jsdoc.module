@@ -131,7 +131,10 @@ function jsdoc_menu($may_cache) {
         $path = "jsdoc/$name";
       }
 
-      if ($node = jsdoc_object_node_load($name, $project, $version, $resource)) {
+      if ($node = jsdoc_object_nodes_load($name, $project, $version, $resource)) {
+        if (count($node) == 1) {
+          $node = $node[0];
+        }
         $item = array(
           'path' => $path,
           'title' => t('View'),
@@ -1900,7 +1903,15 @@ function jsdoc_object_node_load($name, $project=false, $version=false, $resource
     return $nodes[0];
   }
   elseif (!empty($nodes)) {
-    return $nodes;
+    $most_similar = 0;
+    foreach($nodes as $match) {
+      similar_text($match->title, jsdoc_get_project($match)->title, $similarity);
+      if ($similarity > $most_similar) {
+        $node = $match;
+        $most_similar = $similarity;
+      }
+    }
+    return $node;
   }
 }
 
