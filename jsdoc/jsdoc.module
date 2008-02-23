@@ -2930,7 +2930,7 @@ function jsdoc_get_prototype_chain($node, $environments, $output = array()) {
     $prototype = $parents->chain['prototype'][0];
   }
   if ($prototype) {
-    if ($parent = jsdoc_object_node_load($prototype, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_resources($node)->jsdoc_provide_nids)) {
+    if ($parent = jsdoc_object_node_load($prototype, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_resources($node, $environments)->jsdoc_provide_nids)) {
       return jsdoc_get_prototype_chain($parent, $environments, $output);
     }
   }
