@@ -402,35 +402,30 @@ function jsdoc_cron() {
   _jsdoc_cron_chdir(true);
   _jsdoc_cron_timeout();
 
-  // Validate the stuff added in the newly included file
   if (_jsdoc_cron_validate_include()) {
-    $files = variable_get('jsdoc_cron_files', array());
-    if (!empty($files)) {
-      // Call this without caring about its return, just to handle any set up it does
-      call_user_func(_jsdoc_base() . '_get_files');
-      print count($files) . ' files left<br>';
-    }else{
-      db_query("UPDATE {jsdoc_cache} SET used = 0");
-      foreach (jsdoc_projects() as $project) {
-        $version = jsdoc_version_node_load('HEAD', $project);
-        $query = db_query("SELECT vid FROM {jsdoc_resources} WHERE used = 0 AND version = %d", $version->nid);
-        $bad_vids = array();
-        while ($result = db_fetch_object($query)) {
-          $bad_vids[] = $result->vid;
-        }
-        db_query("UPDATE {jsdoc_resources} SET used = 0 WHERE used = 1 AND version = %d", $version->nid);
-        foreach ($bad_vids as $bad_vid){
-          $object_query = db_query("SELECT MAX(vid) AS vid FROM {jsdoc_objects} WHERE (resource_vid = %d OR provide_vid = %d) AND version = %d GROUP BY nid", $bad_vid, $bad_vid, $version->nid);
-          if (!db_num_rows($object_query)) {
-            db_query("UPDATE {jsdoc_resources} SET used = 1 WHERE vid = %d", $bad_vid);
-          }else{
-            while ($object_result = db_fetch_object($object_query)) {
-              db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $object_result->vid);
-            }
-          }
+    // This is messy since we want to do this without doing any DB manipulation to run this check
+    $current_files = call_user_func(_jsdoc_base() . '_get_files');
+    $query = db_query("SELECT namespace.title AS namespace, resource.title AS filename, MAX(resource.vid) AS vid FROM {node} resource JOIN {jsdoc_objects} jo ON (resource.vid = jo.resource_vid) JOIN {node} obj ON (obj.vid = jo.vid) JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) JOIN {node} version ON (version.nid = jv.nid) JOIN {node} namespace ON (namespace.nid = jv.project) WHERE version.title = 'HEAD' GROUP BY BINARY namespace.title, BINARY resource.title");
+    while ($result = db_fetch_object($query)) {
+      $found = false;
+      foreach ($current_files as $current_file) {
+        if ($current_file[0] == $result->namespace && $current_file[1] == $result->filename) {
+          $found = true;
+          break;
         }
       }
-      $files = call_user_func(_jsdoc_base() . '_get_files');
+      if (!$found) {
+        db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE resource_vid = %d", $result->vid);
+      }
+    }
+
+  // Validate the stuff added in the newly included file
+    $files = variable_get('jsdoc_cron_files', array());
+    if (!empty($files)) {
+      print count($files) . ' files left<br>';
+    }
+    else {
+      $files = $current_files;
     }
 
     if (!is_array($files)) {
@@ -521,11 +516,6 @@ function jsdoc_cron() {
             print 'cache hit ' . $cache->filepath . '<br>';
           }
 
-          db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE used = 1 AND version = %d AND resource_vid = %d", $version->nid, $resource_node->vid);
-
-          unset($project);
-          unset($version);
-
           db_query("DELETE FROM {jsdoc_resource_hierarchy} WHERE nid = %d AND version = %d", $provides_node->nid, jsdoc_get_version($provides_node)->nid);
 
           // Using the requires statement, create the links between files that are required
@@ -587,12 +577,19 @@ function jsdoc_cron() {
               $content['mixins']
             );
           }
+          $version = jsdoc_version_node_load('HEAD', $namespace);
+          $query = db_query("SELECT n.title, MAX(n.vid) FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.version = %d AND jo.resource_vid = %d GROUP BY BINARY n.title", $version->nid, $resource_node->vid);
+          while ($result = db_fetch_object($query)) {
+            if (!array_key_exists($result->title, $contents)) {
+              db_query("UPDATE {jsdoc_objects} SET used = 0 WHERE vid = %d", $result->vid);
+            }
+          }
         }
 
         $files = variable_get('jsdoc_cron_files', array());
       }
 
-      if (!db_result(db_query("SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
+      if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
         // If all items are used, then none of them are new.
         // We can do this because if nothing is missing,
         // then all then new things are really new.
@@ -3262,11 +3259,6 @@ function _jsdoc_cron_validate() {
 }
 
 function _jsdoc_cron_validate_include() {
-  if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
-    watchdog('jsdoc', t('Update code changes before running cron'), WATCHDOG_ERROR);
-    return false;
-  }
-
   $files_function = _jsdoc_base() . '_get_files';
   if (!function_exists($files_function)) {
     watchdog('jsdoc', $files_function . t(' does not exist in ') . $file_location, WATCHDOG_ERROR);
