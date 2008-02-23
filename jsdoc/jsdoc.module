@@ -294,7 +294,7 @@ function jsdoc_search($op = 'search', $keys = null) {
         $version_title = 'HEAD';
       }
 
-      $find = do_search(str_replace('.', ' ', $keys) . ' OR ' . $keys, 'jsdoc_' . $version_title);
+      $find = do_search('(' . str_replace('.', ' ', $keys) . ')' . ' OR ' . $keys, 'jsdoc_' . $version_title);
       $results = array();
       foreach ($find as $item) {
         $node = _jsdoc_node_load($item->sid);
