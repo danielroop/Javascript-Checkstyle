@@ -309,7 +309,10 @@ function jsdoc_search($op = 'search', $keys = null) {
         '(' . implode('), (', _jsdoc_build_terms($keys)) . ')',
         'jsdoc_' . $version,
         "INNER JOIN {node} n ON (n.nid = i.sid) INNER JOIN {node} n2 ON (n2.title = n.title AND BINARY n2.title = BINARY n.title AND n2.type = 'jsdoc_object') INNER JOIN {jsdoc_objects} jo ON (jo.vid = n2.vid) INNER JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) INNER JOIN {node} n4 ON (n4.nid = jv.project)",
-        $where
+        $where,
+        array(),
+        'i.relevance + (10 / CHAR_LENGTH(n.title)) AS score',
+        "INNER JOIN {node} n ON (n.nid = i.sid)"
       );
       $results = array();
       foreach ($find as $item) {
