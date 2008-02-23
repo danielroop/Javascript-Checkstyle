@@ -215,9 +215,13 @@ function _jsdoc_block_search_submit($form_id, $form) {
       drupal_goto($object->jsdoc_url);
       return;
     }
-    elseif ($object = jsdoc_object_node_load($search)) {
-      drupal_goto($object->jsdoc_url);
-      return;
+    else {
+      $query = db_query("SELECT title FROM {node} WHERE type = 'jsdoc_object' AND title LIKE '%%%s%%' GROUP BY BINARY title", $search);
+      if (db_num_rows($query) == 1) {
+        $object = jsdoc_object_node_load(db_result($query));
+        drupal_goto($object->jsdoc_url);
+        return;
+      }
     }
   }
 
