@@ -253,7 +253,7 @@ function jsdoc_update_index() {
     $last_nid = $node->nid;
     $node = _jsdoc_node_load($node->nid);
 
-    $text = '<h1>'. str_replace('.', ' ', $node->title) .'</h1>'. $node->title . ' ' . jsdoc_get_teaser($node) . ' ' . jsdoc_get_body($node);
+    $text = '<h1>'. implode(' ', _jsdoc_build_terms($node->title)) . '</h1> ' . jsdoc_get_teaser($node) . ' ' . jsdoc_get_body($node);
 
     // Fetch extra data normally not visible
     $extra = node_invoke_nodeapi($node, 'update index');
@@ -304,11 +304,14 @@ function jsdoc_search($op = 'search', $keys = null) {
         $version_title = 'HEAD';
       }
 
-      $find = do_search('(' . str_replace('.', ' ', $keys) . ') OR (' . $keys . ')', 'jsdoc_' . $version_title);
+      $find = do_search('(' . implode('), (', _jsdoc_build_terms($keys)) . ')', 'jsdoc_' . $version_title);
       $results = array();
       foreach ($find as $item) {
         $node = _jsdoc_node_load($item->sid);
         if ($version && jsdoc_get_version($node)->nid != $version->nid) {
+          continue;
+        }
+        if (!$private && jsdoc_is_private($node)) {
           continue;
         }
 
@@ -1487,7 +1490,11 @@ function jsdoc_is_function(&$node) {
 }
 
 function jsdoc_is_private(&$node) {
-  return $node->jsdoc_private || $node->jsdoc_private_parent;
+  $query = db_query("SELECT jo.private, jo.private_parent FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.version = %d GROUP BY jo.private, jo.private_parent", $node->title, $node->title, jsdoc_get_version($node)->nid);
+  if (db_num_rows($query) == 1) {
+    $result = db_fetch_object($query);
+    return $result->private || $result->private_parent;
+  }
 }
 
 function jsdoc_get_type(&$node) {
@@ -3277,6 +3284,21 @@ function _jsdoc_cron_validate_include() {
   }
 
   return true;
+}
+
+function _jsdoc_build_terms($title) {
+  $output = array($title, array());
+  $parts = explode('.', $title);
+  foreach ($parts as $part) {
+    if (preg_match('%^[_.$]*([a-zA-Z][a-z0-9_.$]*(?:[A-Z][a-z0-9_.$]*)+)%', $part, $match)) {
+      if (preg_match_all('%(^[a-zA-Z][a-z0-9_.$]*|[A-Z][a-z0-9_.$]*)%', $match[1], $cased)) {
+        $output[1] = array_merge($output[1], $cased[0]);
+      }
+    }
+  }
+  $output[1] = implode(' ', $output[1]);
+  $output[2] = implode(' ', $parts);
+  return $output;
 }
 
 function _jsdoc_build_taxonomy($names, $vid, $parent = false)
