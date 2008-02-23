@@ -208,14 +208,16 @@ function _jsdoc_block_search() {
 
 function _jsdoc_block_search_submit($form_id, $form) {
   $search = $form['search'];
+  if (strpos($search, ' ') === false) {
+    $query = db_query("SELECT 1 FROM {node} WHERE type = 'jsdoc_object' AND title = '%s' GROUP BY BINARY title", $search);
+    if (db_num_rows($query) == 1) {
+      $object = jsdoc_object_node_load($search);
+      drupal_goto($object->jsdoc_url);
+      return;
+    }
+  }
 
-  $object = jsdoc_object_node_load($search);
-  if ($object->type == 'jsdoc_object') {
-    drupal_goto($object->jsdoc_url);
-  }
-  else {
-    drupal_goto('search/jsdoc/' . $search);
-  }
+  drupal_goto('search/jsdoc/' . $search);
 }
 
 /**
