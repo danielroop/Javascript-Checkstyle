@@ -1476,6 +1476,10 @@ function jsdoc_is_function(&$node) {
   return (jsdoc_get_type($node) == 'Function' || jsdoc_get_type($node) == 'Constructor');
 }
 
+function jsdoc_is_private(&$node) {
+  return $node->jsdoc_private || $node->jsdoc_private_parent;
+}
+
 function jsdoc_get_type(&$node) {
   if (isset($node->jsdoc_type)) {
     return $node->jsdoc_type;
@@ -1539,24 +1543,24 @@ function jsdoc_get_provide(&$node) {
   return $object->jsdoc_provide;
 }
 
-function jsdoc_get_child_instances(&$node, $with_private=false) {
-  return jsdoc_get_children($node, $with_private)->instances;
+function jsdoc_get_child_instances(&$node) {
+  return jsdoc_get_children($node)->instances;
 }
 
-function jsdoc_get_child_prototypes(&$node, $with_private=false) {
-  return jsdoc_get_children($node, $with_private)->prototypes;
+function jsdoc_get_child_prototypes(&$node) {
+  return jsdoc_get_children($node)->prototypes;
 }
 
-function jsdoc_get_child_variables(&$node, $with_private=false) {
-  return jsdoc_get_children($node, $with_private)->variables;
+function jsdoc_get_child_variables(&$node) {
+  return jsdoc_get_children($node)->variables;
 }
 
-function jsdoc_get_child_chains(&$node, $with_private=false) {
-  return jsdoc_get_children($node, $with_private)->chains;
+function jsdoc_get_child_chains(&$node) {
+  return jsdoc_get_children($node)->chains;
 }
 
-function jsdoc_get_child_mixins(&$node, $with_private=false) {
-  return jsdoc_get_children($node, $with_private)->mixins;
+function jsdoc_get_child_mixins(&$node) {
+  return jsdoc_get_children($node)->mixins;
 }
 
 function jsdoc_is_namespace(&$node) {
@@ -1574,7 +1578,7 @@ function jsdoc_is_namespace(&$node) {
   return ($node->jsdoc_namespace = $namespace);
 }
 
-function jsdoc_get_children(&$node, $with_private=false) {
+function jsdoc_get_children(&$node) {
   if (isset($node->jsdoc_variables)) {
     return (object)array(
       'instances' => $node->jsdoc_instances,
@@ -1597,16 +1601,9 @@ function jsdoc_get_children(&$node, $with_private=false) {
     'prototype' => array()
   );
 
-  if ($with_private) {
-    $with_private = '';
-  }
-  else {
-    $with_private = ' AND jo.private = 0 ';
-  }
-
   if ($node->type == "jsdoc_variable") {
     // Find all objects joined normally to this object, 
-    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' " . $with_private . " AND jo.version  = %d AND jo.used != -1 AND jo.new = 0 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, jsdoc_get_version($node)->nid);
+    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' AND jo.version  = %d AND jo.used != -1 AND jo.new = 0 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, jsdoc_get_version($node)->nid);
     $node->jsdoc_variables = array();
     while ($object = db_fetch_object($query)) {
       $object = jsdoc_object_node_load($object->title, jsdoc_get_project($node), jsdoc_get_version($node));
@@ -1615,7 +1612,7 @@ function jsdoc_get_children(&$node, $with_private=false) {
     uksort($node->jsdoc_variables, 'strnatcasecmp');
   }
   elseif ($node->type == "jsdoc_object") {
-    $query = db_query("SELECT j.type, j.subtype, nr.nid, MAX(nr.vid) AS vid FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE nr2.title = '%s' AND BINARY nr2.title = '%s' " . $with_private . " AND j.version = %d GROUP BY nr.nid, j.type, j.subtype", $node->title, $node->title, jsdoc_get_version($node)->nid);
+    $query = db_query("SELECT j.type, j.subtype, nr.nid, MAX(nr.vid) AS vid FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE nr2.title = '%s' AND BINARY nr2.title = '%s' AND j.version = %d GROUP BY nr.nid, j.type, j.subtype", $node->title, $node->title, jsdoc_get_version($node)->nid);
     while ($join = db_fetch_object($query)) {
       $object = _jsdoc_node_load($join->nid, $join->vid);
       if (!$object->jsdoc_used) {
@@ -1651,7 +1648,7 @@ function jsdoc_get_children(&$node, $with_private=false) {
     uksort($node->jsdoc_mixins['prototype'], 'strnatcasecmp');
   }
 
-  return jsdoc_get_children($node, $with_private);
+  return jsdoc_get_children($node);
 }
 
 /**
@@ -1726,27 +1723,6 @@ function jsdoc_root_objects($version) {
     }
   }
   
-  return $objects;
-}
-
-/**
-* Load all objects within this resource
-*/
-function jsdoc_resource_object_list($node, $private = false) {
-  $objects = array();
-
-  if ($private) {
-    $query = db_query("SELECT nid, MAX(vid) AS vid FROM {jsdoc_objects} WHERE resource_vid = %d AND used != -1 AND new = 0 GROUP BY nid UNION SELECT nid, MAX(vid) AS vid FROM {jsdoc_objects} WHERE provide_vid = %d AND used != -1 AND new = 0 GROUP BY nid", $node->nid, $node->nid);
-  }
-  else {
-    $query = db_query("SELECT nid, MAX(vid) AS vid FROM {jsdoc_objects} WHERE resource_vid = %d AND used != -1 AND new = 0 AND private = %d AND private_parent = %d GROUP BY nid UNION SELECT nid, MAX(vid) AS vid FROM {jsdoc_objects} WHERE provide_vid = %d AND used != -1 AND new = 0 AND private = %d AND private_parent = %d GROUP BY nid", $node->nid, $private, $private, $node->nid, $private, $private);
-  }
-
-  while ($object = db_fetch_object($query)) {
-    $object = _jsdoc_node_load($object->nid, $object->vid);
-    $objects[$object->title] = $object;
-  }
-
   return $objects;
 }
 
@@ -2484,7 +2460,8 @@ function _jsdoc_get_object_themed($node, $title=null) {
     'url' => $node->jsdoc_url,
     'summary' => jsdoc_get_teaser($node),
     'singleton' => jsdoc_is_initialized($node),
-    'namespace' => jsdoc_is_namespace($node)
+    'namespace' => jsdoc_is_namespace($node),
+    'private' => jsdoc_is_private($node)
   );
 
   if ($object->url) {
