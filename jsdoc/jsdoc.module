@@ -215,6 +215,10 @@ function _jsdoc_block_search_submit($form_id, $form) {
       drupal_goto($object->jsdoc_url);
       return;
     }
+    elseif ($object = jsdoc_object_node_load($search)) {
+      drupal_goto($object->jsdoc_url);
+      return;
+    }
   }
 
   drupal_goto('search/jsdoc/' . $search);
