@@ -1561,15 +1561,23 @@ function jsdoc_is_function(&$node) {
 }
 
 function jsdoc_is_private(&$node) {
-  if ($node->type == 'jsdoc_object') {
-    return $node->jsdoc_private || $node->jsdoc_private_parent;
+  if ($node->type == 'jsdoc_object' || isset($node->jsdoc_private)) {
+    return $node->jsdoc_private;
   }
 
   $query = db_query("SELECT jo.private, jo.private_parent FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.version = %d GROUP BY jo.private, jo.private_parent", $node->title, $node->title, jsdoc_get_version($node)->nid);
   if (db_num_rows($query) == 1) {
     $result = db_fetch_object($query);
-    return $result->private || $result->private_parent;
+    $node->jsdoc_private_parent = $result->private_parent;
+    return $node->jsdoc_private = $result->private;
   }
+}
+
+function jsdoc_has_private_parent(&$node) {
+  if ($node->type != 'jsdoc_object' && !isset($node->jsdoc_private_parent)) {
+    jsdoc_is_private($node);
+  }
+  return $node->jsdoc_private_parent;
 }
 
 function jsdoc_get_type(&$node) {
@@ -2582,7 +2590,8 @@ function _jsdoc_get_object_themed($node, $title=null) {
     'summary' => jsdoc_get_teaser($node),
     'singleton' => jsdoc_is_initialized($node),
     'namespace' => jsdoc_is_namespace($node),
-    'private' => jsdoc_is_private($node)
+    'private' => jsdoc_is_private($node),
+    'private_parent' => jsdoc_has_private_parent($node)
   );
 
   if ($object->url) {
