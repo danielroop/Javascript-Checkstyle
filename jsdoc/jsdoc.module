@@ -83,8 +83,9 @@ function jsdoc_menu($may_cache) {
   }
   else {
     if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
+      $query = db_query("SELECT COUNT(*) FROM {jsdoc_objects} WHERE used = 0");
       $items[] = array('path' => 'jsdoc/manage',
-        'title' => t('Manage Documentation Changes'),
+        'title' => t('Manage Documentation Changes: ' . db_result($query) . ' left'),
         'callback' => 'drupal_get_form',
         'callback arguments' => array('jsdoc_manage'),
         'access' => user_access('edit jsdoc'),
@@ -134,6 +135,7 @@ function jsdoc_menu($may_cache) {
       if ($node = jsdoc_object_nodes_load($name, $project, $version, $resource)) {
         if (count($node) == 1) {
           $node = $node[0];
+          jsdoc_current_node($node);
         }
         $item = array(
           'path' => $path,
@@ -180,7 +182,71 @@ function jsdoc_block($op='list', $delta=0) {
         return $block;
       }
       elseif ($delta == 1) {
-        $namespaces = unserialize(cache_get('jsdoc_namespaces', 'cache')->data);
+        $namespaces = array();
+
+        $current = jsdoc_current_node();
+
+        if ($_GET['jsdoc_project'] || $current) {
+          if ($current) {
+            $project_title = jsdoc_get_project($current)->title;
+          }
+          else {
+            $project_title = $_GET['jsdoc_project'];
+          }
+
+          foreach (jsdoc_projects() as $project) {
+            if ($project->title != $project_title) {
+              $namespaces[] = (object)array(
+                'title' => $project->title,
+                'url' => url($_GET['q'], 'jsdoc_project=' . $project->title),
+                'a' => l($project->title, $_GET['q'], array(), 'jsdoc_project=' . $project->title)
+              );
+            }
+            else {
+              if ($_GET['jsdoc_project']) {
+                $version = jsdoc_version_node_load('HEAD', $_GET['jsdoc_project']);
+                $project = jsdoc_get_project($version);
+              }
+              else {
+                $version = jsdoc_get_version($current);
+                $project = jsdoc_get_project($current);
+              }
+              $all_namespaces = unserialize(cache_get('jsdoc_namespaces_' . $project->title, 'cache')->data);
+
+              foreach ($all_namespaces[$version->nid] as $namespace) {
+                $namespace = _jsdoc_node_load($namespace[0], $namespace[1]);
+                $children = false;
+
+                if ($_GET['jsdoc_object'] == $namespace->title) {
+                  $variables = jsdoc_get_child_variables($namespace);
+                  if (!empty($variables)) {
+                    foreach ($variables as $child) {
+                      $children[$child->title] = _jsdoc_get_object_themed($child);
+                    }
+                    uksort($children, "strnatcasecmp");
+                  }
+                }
+
+                $namespace = _jsdoc_get_object_themed($namespace);
+                $namespace->children = $children;
+                $namespace->url = url($namespace->title, $_GET['q'], 'jsdoc_project=' . $_GET['jsdoc_project'] . '&jsdoc_object=' . $namespace->title);
+                $namespace->a = l($namespace->title, $_GET['q'], array(), 'jsdoc_project=' . $_GET['jsdoc_project'] . '&jsdoc_object=' . $namespace->title);
+
+                $namespaces[] = $namespace;
+              }
+            }
+          }
+        }
+        else {
+          foreach (jsdoc_projects() as $project) {
+            $namespaces[] = (object)array(
+              'title' => $project->title,
+              'url' => url($_GET['q'], 'jsdoc_project=' . $project->title),
+              'a' => l($project->title, $_GET['q'], array(), 'jsdoc_project=' . $project->title)
+            );
+          }
+        }
+        //$namespaces = unserialize(cache_get('jsdoc_namespaces', 'cache')->data);
         $block['subject'] = 'Objects';
         $block['content'] = theme('jsdoc_namespaces', $namespaces);
         return $block;
@@ -316,7 +382,7 @@ function jsdoc_search($op = 'search', $keys = null) {
         "INNER JOIN {node} n ON (n.nid = i.sid) INNER JOIN {node} n2 ON (n2.title = n.title AND BINARY n2.title = BINARY n.title AND n2.type = 'jsdoc_object') INNER JOIN {jsdoc_objects} jo ON (jo.vid = n2.vid) INNER JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) INNER JOIN {node} n4 ON (n4.nid = jv.project)",
         $where,
         array(),
-        'i.relevance + (10 / CHAR_LENGTH(n.title)) AS score',
+        'i.relevance + (15 / CHAR_LENGTH(n.title)) AS score',
         "INNER JOIN {node} n ON (n.nid = i.sid)"
       );
       $results = array();
@@ -437,16 +503,16 @@ function jsdoc_cron() {
     else {
       _jsdoc_init();
 
-      $namespaces = array();
       foreach (jsdoc_projects() as $project) {
-        $query = db_query("SELECT n.title, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $project->title, $project->title);
+        $namespaces = array();
+        $query = db_query("SELECT n.title, n.nid, n.vid, jo.version AS jsdoc_version, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $project->title, $project->title);
         while ($result = db_fetch_object($query)) {
           if (jsdoc_is_namespace($result)) {
-            $namespaces[] = $result->title;
+            $namespaces[$result->jsdoc_version][] = array($result->nid, $result->vid);
           }
         }
+        cache_set('jsdoc_namespaces_' . $project->title, 'cache', serialize($namespaces));
       }
-      cache_set('jsdoc_namespaces', 'cache', serialize($namespaces));
 
       // Build an array of ctimes from our cache table
       $file_ctimes = array();
@@ -776,11 +842,11 @@ function jsdoc_manage_submit($form_id, $form) {
       foreach ($nids as $nid => $vids) {
         foreach ($vids as $vid => $props) {
           if ($props['delete']) {
-            if ($type == 'resources') {
-              db_query("UPDATE {jsdoc_resources} SET used = -1 WHERE vid = %d", $vid);
-            }
-            elseif ($type == 'objects') {
+            if ($type == 'objects') {
+              $node = _jsdoc_node_load($nid, $vid);
               db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE nid = %d AND vid = %d", $nid, $vid);
+              $node->status = 0;
+              node_save($node);
             }
           }
           elseif ($props['move']) {
@@ -3019,6 +3085,14 @@ function jsdoc_get_variable_resources(&$node) {
   return $node->variable_resources;
 }
 
+function jsdoc_current_node($node=null) {
+  static $current;
+  if (is_null($node)) {
+    return $current;
+  }
+  $current = $node;
+}
+
 function jsdoc_get_resources(&$node, $environments) {
   if (isset($node->jsdoc_resources)) {
     return (object)array(
@@ -3855,7 +3929,15 @@ function theme_jsdoc_search($name) {
 function theme_jsdoc_namespaces($namespaces) {
   $output = '<ul>';
   foreach ($namespaces as $namespace) {
-    $output .= "<li>$namespace</li>";
+    $output .= "<li>{$namespace->a}";
+    if (!empty($namespace->children)) {
+      $output .= '<ul>';
+      foreach ($namespace->children as $child) {
+        $output .= "<li>{$child->a}</li>";
+      }
+      $output .= '</ul>';
+    }
+    $output .= "</li>";
   }
   $output .= '</ul>';
   return $output;
