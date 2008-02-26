@@ -1077,7 +1077,7 @@ function jsdoc_object_update($node) {
   $project = _jsdoc_project_get_or_create(jsdoc_get_project($node)->title);
 
   _jsdoc_detail_update_joins($node);
-  db_query("UPDATE {jsdoc_objects} SET used = 1, updating = %d, resource_vid = %d, resource_nid = %d, provide_vid = %d, provide_nid = %d, initialized = %d, classlike = %d, type = '%s', returns = '%s', source = '%s', private = %d, private_parent = %d, version = %d WHERE vid = %d", $node->jsdoc_updating, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, jsdoc_get_version($node)->nid, $node->vid);
+  db_query("UPDATE {jsdoc_objects} SET updating = %d, resource_vid = %d, resource_nid = %d, provide_vid = %d, provide_nid = %d, initialized = %d, classlike = %d, type = '%s', returns = '%s', source = '%s', private = %d, private_parent = %d, version = %d WHERE vid = %d", $node->jsdoc_updating, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, jsdoc_get_version($node)->nid, $node->vid);
 
   db_query("DELETE FROM {jsdoc_parameters} WHERE vid = %d", $node->vid);
 
@@ -1307,7 +1307,7 @@ function jsdoc_resource_update($node) {
     db_query("INSERT INTO {jsdoc_resources} SELECT %d, nid, %d, 1, 0 FROM {jsdoc_resources} WHERE vid = %d", $node->vid, jsdoc_get_version($node)->nid, $node->old_vid);
   }
 
-  db_query("UPDATE {jsdoc_resources} SET used = 1, version = '%s' WHERE vid = %d", jsdoc_get_version($node)->nid, $node->vid);
+  db_query("UPDATE {jsdoc_resources} SET version = '%s' WHERE vid = %d", jsdoc_get_version($node)->nid, $node->vid);
 }
 
 /**
