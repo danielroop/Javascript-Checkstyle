@@ -187,11 +187,11 @@ function jsdoc_block($op='list', $delta=0) {
         $current = jsdoc_current_node();
 
         if ($_GET['jsdoc_project'] || $current) {
-          if ($current) {
-            $project_title = jsdoc_get_project($current)->title;
+          if ($_GET['jsdoc_project']) {
+            $project_title = $_GET['jsdoc_project'];
           }
           else {
-            $project_title = $_GET['jsdoc_project'];
+            $project_title = jsdoc_get_project($current)->title;
           }
 
           foreach (jsdoc_projects() as $project) {
@@ -1073,7 +1073,7 @@ function jsdoc_object_update($node) {
     db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE vid = %d", $node->old_vid);
     db_query("INSERT INTO {jsdoc_objects} SELECT %d, nid, resource_vid, resource_nid, provide_vid, provide_nid, initialized, classlike, type, updating, returns, source, private, private_parent, version, 1, 0 FROM {jsdoc_objects} WHERE vid = %d", $node->vid, $node->old_vid);
   }
-  
+
   $project = _jsdoc_project_get_or_create(jsdoc_get_project($node)->title);
 
   _jsdoc_detail_update_joins($node);
@@ -1406,17 +1406,17 @@ function jsdoc_get_parameters(&$node) {
 }
 
 function jsdoc_get_examples(&$node, $markedup=false) {
-  if (isset($node->jsdoc_examples)) {
-    return $node->jsdoc_examples;
+  if (!isset($node->jsdoc_examples)) {
+    $node->jsdoc_examples = array();
+    $node->jsdoc_markedup_examples = array();
+    $query = db_query("SELECT example, markedup FROM {jsdoc_examples} WHERE vid = %d ORDER BY weight", $node->vid);
+    while ($example = db_fetch_object($query)) {
+      $node->jsdoc_examples[] = $example->example;
+      $node->jsdoc_markedup_examples[] = $example->markedup;
+    }
   }
 
-  $node->jsdoc_examples = array();
-  $query = db_query("SELECT example, markedup FROM {jsdoc_examples} WHERE vid = %d ORDER BY weight", $node->vid);
-  while ($example = db_fetch_object($query)) {
-    $node->jsdoc_examples[] = ($markedup) ? $example->markedup : $example->example;
-  }
-
-  return $node->jsdoc_examples;
+  return ($markedup) ? $node->jsdoc_markedup_examples : $node->jsdoc_examples;
 }
 
 function jsdoc_get_parent_mixins(&$node) {
@@ -2863,6 +2863,7 @@ function _jsdoc_object_get_or_create($namespace, $name, $summary, $description, 
     $node->jsdoc_provide_vid = $provide->vid;
     $node->jsdoc_source = $source;
     $node->jsdoc_aliases = $aliases;
+    $node->jsdoc_examples = $examples;
     $node->jsdoc_instance = $instance;
     $node->jsdoc_prototype = $prototype;
     $node->jsdoc_chains = $chains;
