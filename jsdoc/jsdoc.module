@@ -1519,6 +1519,7 @@ function jsdoc_get_classlike(&$node) {
 function jsdoc_get_teaser(&$node, $format=false) {
   if ($node->type == 'jsdoc_variable' && !$node->teaser) {
     $node->teaser = _jsdoc_resolve_variable($node)->teaser;
+    $node->format = _jsdoc_resolve_variable($node)->format;
   }
 
   return ($format) ? check_markup($node->teaser, $node->format, FALSE) : $node->teaser;
