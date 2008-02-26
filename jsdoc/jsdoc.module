@@ -935,7 +935,7 @@ function jsdoc_manage_submit($form_id, $form) {
     }
   }
 
-  if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 UNION SELECT 1 FROM {jsdoc_resources} WHERE used = 0"))) {
+  if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
     drupal_goto(variable_get('site_frontpage', 'node'));
   }
 }
