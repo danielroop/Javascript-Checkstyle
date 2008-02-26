@@ -324,7 +324,7 @@ function jsdoc_update_index() {
     $last_nid = $node->nid;
     $node = _jsdoc_node_load($node->nid);
 
-    $text = '<h1>'. implode(' ', _jsdoc_build_terms($node->title)) . '</h1> ' . jsdoc_get_teaser($node) . ' ' . jsdoc_get_body($node);
+    $text = '<h1>'. implode(' ', _jsdoc_build_terms($node->title)) . '</h1> ' . jsdoc_get_teaser($node, true) . ' ' . jsdoc_get_body($node);
 
     // Fetch extra data normally not visible
     $extra = node_invoke_nodeapi($node, 'update index');
@@ -398,7 +398,7 @@ function jsdoc_search($op = 'search', $keys = null) {
           'date' => $node->changed,
           'node' => $node,
           'score' => $item->score,
-          'snippet' => (jsdoc_get_teaser($node)) ? search_excerpt($keys, jsdoc_get_teaser($node)) : ''
+          'snippet' => (jsdoc_get_teaser($node, true)) ? search_excerpt($keys, jsdoc_get_teaser($node, true)) : ''
         );
       }
       return $results;
@@ -2661,7 +2661,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
       if ($obj) {
         $type = (object)array(
           'title' => $obj->title,
-          'summary' => jsdoc_get_teaser($obj),
+          'summary' => jsdoc_get_teaser($obj, true),
           'fields' => false
         );
         if (!$cleaned) {
@@ -2679,7 +2679,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
 
               $field = (object)array(
                 'title' => $title,
-                'summary' => jsdoc_get_teaser($arg),
+                'summary' => jsdoc_get_teaser($arg, true),
                 'types' => false
               );
               if (!$cleaned) {
@@ -2701,7 +2701,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
                   'title' => $field_obj->title,
                   'repeating' => $repeating,
                   'optional' => $optional,
-                  'summary' => jsdoc_get_teaser($field_obj)
+                  'summary' => jsdoc_get_teaser($field_obj, true)
                 );
                 if (!$cleaned) {
                   $field_type->url = $field_obj->jsdoc_url;
