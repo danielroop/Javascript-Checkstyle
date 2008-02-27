@@ -808,7 +808,7 @@ function jsdoc_manage($edit = array()) {
 
     $form['jsdoc_changes']['objects'][$node->nid][$node->vid] = array(
       '#type' => 'fieldset',
-      '#title' => $node->title . ' in ' . $resource->title
+      '#title' => $node->title . ' in ' . theme('jsdoc_resource_source_link', jsdoc_get_project($resource)->title, $resource->title)
     );
     $form['jsdoc_changes']['objects'][$node->nid][$node->vid]['delete'] = array(
       '#type' => 'checkbox',
@@ -3955,4 +3955,8 @@ function theme_jsdoc_namespaces($namespaces) {
   }
   $output .= '</ul>';
   return $output;
+}
+
+function theme_jsdoc_resource_source_link($project, $resource) {
+  return $resource;
 }
