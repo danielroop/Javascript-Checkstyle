@@ -1628,7 +1628,12 @@ function jsdoc_get_resource(&$node) {
   return $node->jsdoc_resource;
 }
 
-function jsdoc_get_source($node) {
+function jsdoc_get_source($node, $depth=0) {
+  if ($depth++ < 2 && $node->type == 'jsdoc_object' && empty($node->jsdoc_source)) {
+    if ($constructor = _jsdoc_resolve_constructor($node, $depth)) {
+      $node->jsdoc_source = $constructor->source;
+    }
+  }
   return $node->jsdoc_source;
 }
 
@@ -2349,6 +2354,17 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
     '#value' => theme('jsdoc_object_resource', jsdoc_get_resource($node))
   );
 
+  $examples = array();
+  foreach (jsdoc_get_examples($node, true) as $weight => $example) {
+    $examples[] = theme('jsdoc_object_example', $example, $weight + 1);
+  }
+  if (!empty($examples)) {
+    $form['examples'] = array(
+      '#value' => theme('jsdoc_object_examples', $examples),
+      '#weight' => 35
+    );
+  }
+
   $prototype_chain = jsdoc_get_prototype_chain($node, array(3, 4));
   if(empty($prototype_chain)){
     $prototype_chain = array($node);
@@ -2399,17 +2415,6 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
         }
       }
     }
-  }
-
-  $examples = array();
-  foreach (jsdoc_get_examples($node, true) as $weight => $example) {
-    $examples[] = theme('jsdoc_object_example', $example, $weight + 1);
-  }
-  if (!empty($examples)) {
-    $form['examples'] = array(
-      '#value' => theme('jsdoc_object_examples', $examples),
-      '#weight' => 35
-    );
   }
 
   if (!empty($mixin_chain)) {
@@ -2579,7 +2584,7 @@ function _jsdoc_get_title_themed($node) {
   return $themed;  
 }
 
-function _jsdoc_get_object_themed($node, $title=null) {
+function _jsdoc_get_object_themed($node, $title=null, $depth=0) {
   if (is_null($title)) {
     $title = $node->title;
   }
@@ -2614,111 +2619,157 @@ function _jsdoc_get_object_themed($node, $title=null) {
       $object->type->a = $type->title;
     }
 
-    $parameters = _jsdoc_get_parameters_themed($node);
-    if (!empty($parameters)) {
-      $object->parameters = $parameters;
-    }
-    $signature = _jsdoc_build_function_signature($node, $parameters);
-    if (!empty($signature)) {
-      $object->signature = $signature;
+    if (jsdoc_is_function($node)) {
+      $parameters = _jsdoc_get_parameters_themed($node, false, $depth);
+      if (!empty($parameters)) {
+        $object->parameters = $parameters;
+      }
+      $signature = _jsdoc_build_function_signature($node, $parameters);
+      if (!empty($signature)) {
+        $object->signature = $signature;
+      }
+      $source = jsdoc_get_source($node, $depth);
+      if (!empty($source)) {
+        $object->source = $source;
+      }
     }
   }
 
   return $object;
 }
 
-function _jsdoc_get_parameters_themed(&$node, $cleaned=false) {
+function _jsdoc_resolve_constructor(&$node, $depth=0) {
+  $prototype_objects = array();
+  $prototype_chain = jsdoc_get_prototype_chain($node, array(3, 4));
+  $prototype_chain[] = $node;
+  foreach ($prototype_chain as $prototype) {
+    $children_all = jsdoc_get_children($prototype);
+    $prototype_object_children = array();
+    foreach ($children_all as $type => $children) {
+      if ($type == 'prototypes' || $type == 'instances') {
+        foreach ($children as $child) {
+          if (jsdoc_get_type($child) == 'Function') {
+            $title = $child->title;
+            if ($prototype->title . '.' == substr($title, 0, strlen($prototype->title) + 1)) {
+              $title = substr($title, strlen($prototype->title) + 1);
+            }
+            $prototype_object_children[$title] = _jsdoc_get_object_themed($child, $title, $depth);
+          }
+        }
+      }
+    }
+    if (!empty($prototype_object_children)) {
+      $prototype_objects[] = (object)array(
+        'node' => _jsdoc_get_object_themed($prototype, $prototype->title, $depth),
+        'children' => $prototype_object_children
+      );
+    }
+  }
+  if ($constructor = theme('jsdoc_resolve_constructor', $prototype_objects)) {
+    return $constructor;
+  }
+}
+
+function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
   if (isset($node->jsdoc_parameters_themed)) {
     return $node->jsdoc_parameters_themed;
   }
 
   $parameters = array();
+  $retrieved_parameters = jsdoc_get_parameters($node);
 
-  foreach (jsdoc_get_parameters($node) as $item) {
-    $parameter = (object)$item['jsdoc_formatted'];
-    $parameter->summary = $item['summary'];
-    $parameter->name = $item['name'];
-    $parameter->optional = $item['optional'];
-    $parameter->repeating = $item['repeating'];
-    $parameter->types = false;
-    if ($cleaned) {
-      unset($parameter->html_type_prefix);
-      unset($parameter->html_type_suffix);
-      unset($parameter->separator);
+  if ($depth++ < 2 && empty($retrieved_parameters) && jsdoc_get_type($node) == 'Constructor') {
+    if ($constructor = _jsdoc_resolve_constructor($node, $depth)) {
+      $parameters = $constructor->parameters;
     }
+  }
+  else {
+    foreach ($retrieved_parameters as $item) {
+      $parameter = (object)$item['jsdoc_formatted'];
+      $parameter->summary = $item['summary'];
+      $parameter->name = $item['name'];
+      $parameter->optional = $item['optional'];
+      $parameter->repeating = $item['repeating'];
+      $parameter->types = false;
+      if ($cleaned) {
+        unset($parameter->html_type_prefix);
+        unset($parameter->html_type_suffix);
+        unset($parameter->separator);
+      }
 
-    $type = $item['type'];
-    $types = array();
-    if (strpos($type, '|') !== false) {
-      $types = preg_split('%\|+%', $type);
-    }
-    elseif ($type) {
-      $types = array($type);
-    }
+      $type = $item['type'];
+      $types = array();
+      if (strpos($type, '|') !== false) {
+        $types = preg_split('%\|+%', $type);
+      }
+      elseif ($type) {
+        $types = array($type);
+      }
 
-    foreach ($types as $type) {
-      $obj = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
-      if ($obj) {
-        $type = (object)array(
-          'title' => $obj->title,
-          'summary' => jsdoc_get_teaser($obj),
-          'fields' => false
-        );
-        if (!$cleaned) {
-          $type->url = $obj->jsdoc_url;
-          $type->a = l($obj->title, $obj->jsdoc_url);
-        }
-        // It will have an nid if it's local. For example type: Function isn't local
-        if ($obj->nid) {
-          // TODO: Could also be inherited, etc
-          $args = jsdoc_get_child_instances($obj);
-          if (!empty($args)) {
-            $type->fields = array();
-            foreach ($args as $arg) {
-              $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
+      foreach ($types as $type) {
+        $obj = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+        if ($obj) {
+          $type = (object)array(
+            'title' => $obj->title,
+            'summary' => jsdoc_get_teaser($obj),
+            'fields' => false
+          );
+          if (!$cleaned) {
+            $type->url = $obj->jsdoc_url;
+            $type->a = l($obj->title, $obj->jsdoc_url);
+          }
+          // It will have an nid if it's local. For example type: Function isn't local
+          if ($obj->nid) {
+            // TODO: Could also be inherited, etc
+            $args = jsdoc_get_child_instances($obj);
+            if (!empty($args)) {
+              $type->fields = array();
+              foreach ($args as $arg) {
+                $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
 
-              $field = (object)array(
-                'title' => $title,
-                'summary' => jsdoc_get_teaser($arg),
-                'types' => false
-              );
-              if (!$cleaned) {
-                $field->url = $arg->jsdoc_url;
-                $field->a = l($title, $arg->jsdoc_url);
-              }
-
-              $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
-              foreach ($field_types as $field_type) {
-                $found = 0;
-                $field_type = str_replace('?', '', $field_type, $found);
-                $optional = ($found > 0);
-                $found = 0;
-                $field_type = str_replace('...', '', $field_type, $found);
-                $repeating = ($found > 0);
-
-                $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
-                $field_type = (object)array(
-                  'title' => $field_obj->title,
-                  'repeating' => $repeating,
-                  'optional' => $optional,
-                  'summary' => jsdoc_get_teaser($field_obj)
+                $field = (object)array(
+                  'title' => $title,
+                  'summary' => jsdoc_get_teaser($arg),
+                  'types' => false
                 );
                 if (!$cleaned) {
-                  $field_type->url = $field_obj->jsdoc_url;
-                  $field_type->a = l($field_obj->title, $field_obj->jsdoc_url);
+                  $field->url = $arg->jsdoc_url;
+                  $field->a = l($title, $arg->jsdoc_url);
                 }
-                $field->types[] = $field_type;
-              }
 
-              $type->fields[] = $field;
+                $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
+                foreach ($field_types as $field_type) {
+                  $found = 0;
+                  $field_type = str_replace('?', '', $field_type, $found);
+                  $optional = ($found > 0);
+                  $found = 0;
+                  $field_type = str_replace('...', '', $field_type, $found);
+                  $repeating = ($found > 0);
+
+                  $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+                  $field_type = (object)array(
+                    'title' => $field_obj->title,
+                    'repeating' => $repeating,
+                    'optional' => $optional,
+                    'summary' => jsdoc_get_teaser($field_obj)
+                  );
+                  if (!$cleaned) {
+                    $field_type->url = $field_obj->jsdoc_url;
+                    $field_type->a = l($field_obj->title, $field_obj->jsdoc_url);
+                  }
+                  $field->types[] = $field_type;
+                }
+
+                $type->fields[] = $field;
+              }
             }
           }
+          $parameter->types[] = $type;
         }
-        $parameter->types[] = $type;
       }
+      unset($parameter->type);
+      $parameters[] = $parameter;
     }
-    unset($parameter->type);
-    $parameters[] = $parameter;
   }
 
   return ($node->jsdoc_parameters_themed = $parameters);
@@ -3959,4 +4010,7 @@ function theme_jsdoc_namespaces($namespaces) {
 
 function theme_jsdoc_resource_source_link($project, $resource) {
   return $resource;
+}
+
+function theme_jsdoc_resolve_constructor($objects) {
 }
