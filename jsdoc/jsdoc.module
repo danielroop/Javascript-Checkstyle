@@ -2780,7 +2780,7 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
                 }
               }
             }
-            uksort($type->fields);
+            ksort($type->fields);
           }
           $parameter->types[] = $type;
         }
