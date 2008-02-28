@@ -3601,6 +3601,23 @@ function _jsdoc_markup_code($text, $version, $base=false) {
     }
   }
 
+  $min = 99;
+  $lines = preg_split('%\r?\n%', $text);
+  foreach ($lines as $line) {
+    if (!empty($line)) {
+      preg_match('%^\t+%', $line, $match);
+      if (strlen($match[0]) < $min) {
+        $min = strlen($match[0]);
+      }
+    }
+  }
+  if ($min) {
+    foreach ($lines as $i => $line) {
+      $lines[$i] = preg_replace('%^\t{' . $min . '}%', '', $line);
+    }
+  }
+  $text = implode("\n", $lines);
+
   _jsdoc_init();
   $language = 'javascript';
   if (preg_match('%(^\W*<|>\W*$)%', $text)) {
