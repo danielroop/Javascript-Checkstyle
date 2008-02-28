@@ -3605,9 +3605,10 @@ function _jsdoc_markup_code($text, $version, $base=false) {
   $lines = preg_split('%\r?\n%', $text);
   foreach ($lines as $line) {
     if (!empty($line)) {
-      preg_match('%^\t+%', $line, $match);
-      if (strlen($match[0]) < $min) {
-        $min = strlen($match[0]);
+      if (preg_match('%^\t+%', $line, $match)) {
+        if (strlen($match[0]) < $min) {
+          $min = strlen($match[0]);
+        }
       }
     }
   }
