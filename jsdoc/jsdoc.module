@@ -211,7 +211,23 @@ function jsdoc_block($op='list', $delta=0) {
                 $version = jsdoc_get_version($current);
                 $project = jsdoc_get_project($current);
               }
-              $all_namespaces = unserialize(cache_get('jsdoc_namespaces_' . $project->title, 'cache')->data);
+
+              
+              if (!($all_namespaces = cache_get('jsdoc_namespaces_' . $project->title, 'cache'))) {
+                $all_namespaces = array();
+              }
+              else {
+                $all_namespaces = unserialize($all_namespaces->data);
+              }
+              if (empty($all_namespaces[$version->nid])) {
+                $query = db_query("SELECT n.title, n.nid, n.vid, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND jo.version = %d AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $version->nid, $project->title, $project->title);
+                while ($result = db_fetch_object($query)) {
+                  if (jsdoc_is_namespace($result)) {
+                    $all_namespaces[$version->nid][] = array($result->nid, $result->vid);
+                  }
+                }
+                cache_set('jsdoc_namespaces_' . $project->title, 'cache', serialize($all_namespaces));
+              }
 
               foreach ($all_namespaces[$version->nid] as $namespace) {
                 $namespace = _jsdoc_node_load($namespace[0], $namespace[1]);
@@ -504,13 +520,14 @@ function jsdoc_cron() {
       _jsdoc_init();
 
       foreach (jsdoc_projects() as $project) {
-        $namespaces = array();
-        $query = db_query("SELECT n.title, n.nid, n.vid, jo.version AS jsdoc_version, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $project->title, $project->title);
-        while ($result = db_fetch_object($query)) {
-          if (jsdoc_is_namespace($result)) {
-            $namespaces[$result->jsdoc_version][] = array($result->nid, $result->vid);
-          }
+        if (!($namespaces = cache_get('jsdoc_namespaces_' . $project->title, 'cache'))) {
+          $namespaces = array();
         }
+        else {
+          $namespaces = unserialize($namespaces->data);
+        }
+        $version = jsdoc_get_version($project);
+        unset($namespaces[$version->nid]);
         cache_set('jsdoc_namespaces_' . $project->title, 'cache', serialize($namespaces));
       }
 
