@@ -212,7 +212,6 @@ function jsdoc_block($op='list', $delta=0) {
                 $project = jsdoc_get_project($current);
               }
 
-              
               if (!($all_namespaces = cache_get('jsdoc_namespaces_' . $project->title, 'cache'))) {
                 $all_namespaces = array();
               }
@@ -913,36 +912,6 @@ function jsdoc_manage_submit($form_id, $form) {
                 $mixins
               );
               db_query("UPDATE {jsdoc_objects} SET resource_nid = %d, resource_vid = %d, provide_nid = %d, provide_vid = %d WHERE vid = %d", $move_node->jsdoc_resource, $move_node->jsdoc_resource_vid, $move_node->jsdoc_provide, $move_node->jsdoc_provide_vid, $node->nid);
-            }
-            else if ($type == 'resources') {
-              // Create a new revision (lets us trace title)
-              $node->revision = 1;
-              $node->title = $move_node->title;
-              node_save($node);
-
-              db_query("UPDATE {jsdoc_variables} SET resource_vid = %d, resource_nid = %d WHERE resource_vid = %d AND version = %d", $node->vid, $node->nid, $move_vid, jsdoc_get_version($node)->nid);
-
-              $query = db_query("SELECT nr.nid, MAX(nr.vid) AS vid, nr2.nid AS nid2, nr2.vid AS vid2 FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (nr.vid = jo.vid) JOIN {node_revisions} nr2 ON (nr2.title = nr.title) JOIN {jsdoc_objects} jo2 ON (jo2.vid = nr2.vid AND jo2.version = jo.version) WHERE jo.used = 0 AND jo2.new = 1 AND jo.resource_vid = %d AND jo2.resource_vid = %d AND jo.version = %d AND BINARY nr.title = BINARY nr2.title GROUP BY nr.nid", $vid, $move_vid, jsdoc_get_version($node)->nid);
-              while ($result = db_fetch_object($query)) {
-                jsdoc_manage_submit('jsdoc_manage', array(
-                  'jsdoc_changes' => array(
-                    'objects' => array(
-                      $result->nid => array(
-                        $result->vid => array(
-                          'move' => $result->nid2 . '_' . $result->vid2
-                        )
-                      )
-                    )
-                  )
-                ));
-              }
-
-              // Move resources over
-              db_query("UPDATE {jsdoc_objects} SET resource_vid = %d, resource_nid = %d WHERE resource_vid = %d AND version = %d", $node->vid, $node->nid, $move_vid, jsdoc_get_version($node)->nid);
-              db_query("UPDATE {jsdoc_objects} SET provide_vid = %d, provide_nid = %d WHERE provide_vid = %d AND version = %d", $node->vid, $node->nid, $move_vid, jsdoc_get_version($node)->nid);
-              // Update revision number
-              db_query("UPDATE {jsdoc_objects} SET resource_vid = %d, resource_nid = %d WHERE resource_vid = %d AND version = %d", $node->vid, $node->nid, $vid, jsdoc_get_version($node)->nid);
-              db_query("UPDATE {jsdoc_objects} SET provide_vid = %d, provide_nid = %d WHERE provide_vid = %d AND version = %d", $node->vid, $node->nid, $vid, jsdoc_get_version($node)->nid);
             }
 
             node_delete($move_node->nid);
