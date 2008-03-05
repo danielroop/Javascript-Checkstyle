@@ -798,7 +798,6 @@ function jsdoc_help($section = '') {
 function jsdoc_manage($edit = array()) {
   $header = array('Variable', 'Project', 'Resource', 'New', 'Deleted or Renamed');
 
-  _drupal_add_js('../dojo/dojo.js', 'core', 'header', false, true);
   _drupal_add_js(drupal_get_path('module', 'jsdoc') . '/jsdoc.js', 'module', 'header', false, true);
 
   // Objects
