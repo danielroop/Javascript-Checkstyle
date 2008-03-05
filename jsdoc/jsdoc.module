@@ -669,13 +669,6 @@ function jsdoc_cron() {
 
         $files = variable_get('jsdoc_cron_files', array());
       }
-
-      if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 LIMIT 1"))) {
-        // If all items are used, then none of them are new.
-        // We can do this because if nothing is missing,
-        // then all then new things are really new.
-        db_query("UPDATE {jsdoc_objects} SET new = 0");
-      }
     }
   }
 
@@ -1678,7 +1671,7 @@ function jsdoc_get_children(&$node) {
 
   if ($node->type == "jsdoc_variable") {
     // Find all objects joined normally to this object, 
-    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' AND jo.version  = %d AND jo.used != -1 AND jo.new = 0 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, jsdoc_get_version($node)->nid);
+    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' AND jo.version  = %d AND jo.used != -1 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, jsdoc_get_version($node)->nid);
     $node->jsdoc_variables = array();
     while ($object = db_fetch_object($query)) {
       $object = jsdoc_object_node_load($object->title, jsdoc_get_project($node), jsdoc_get_version($node));
@@ -3648,7 +3641,7 @@ function _jsdoc_resolve_variable(&$node) {
   $classlike = false;
   $full_url = $node->jsdoc_url;
 
-  $query = db_query("SELECT n.teaser, n.body, n.format, j.nid, MAX(j.vid) AS vid, j.resource_nid, MAX(j.resource_vid) AS resource_vid, j.classlike, j.type, j.private FROM {jsdoc_objects} j JOIN {node_revisions} n ON (j.vid = n.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND j.used != -1 AND j.new = 0 AND j.version = %d GROUP BY n.nid", $node->title, $node->title, $version->nid);
+  $query = db_query("SELECT n.teaser, n.body, n.format, j.nid, MAX(j.vid) AS vid, j.resource_nid, MAX(j.resource_vid) AS resource_vid, j.classlike, j.type, j.private FROM {jsdoc_objects} j JOIN {node_revisions} n ON (j.vid = n.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND j.used != -1 AND j.version = %d GROUP BY n.nid", $node->title, $node->title, $version->nid);
   while ($result = db_fetch_object($query)) {
     // If there's only one object for a given variable, or if a resource is chosen, use this as the object
     $resources[] = _jsdoc_node_load($result->resource_nid, $result->resource_vid);
