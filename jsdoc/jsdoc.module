@@ -85,7 +85,7 @@ function jsdoc_menu($may_cache) {
     if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
       $query = db_query("SELECT COUNT(*) FROM {jsdoc_objects} WHERE used = 0");
       $items[] = array('path' => 'jsdoc/manage',
-        'title' => t('Manage Documentation Changes: ' . db_result($query) . ' left'),
+        'title' => t('Manage Documentation Changes'),
         'callback' => 'drupal_get_form',
         'callback arguments' => array('jsdoc_manage'),
         'access' => user_access('edit jsdoc'),
@@ -804,45 +804,35 @@ function jsdoc_help($section = '') {
 // =====
 
 function jsdoc_manage($edit = array()) {
+  $header = array('Variable', 'Project', 'Resource', 'New', 'Deleted or Renamed');
+
+  _drupal_add_js('../dojo/dojo.js', 'core', 'header', false, true);
+  _drupal_add_js(drupal_get_path('module', 'jsdoc') . '/jsdoc.js', 'module', 'header', false, true);
+
   // Objects
-  if ($object = db_fetch_object(db_query("SELECT nid, vid, version FROM {jsdoc_objects} WHERE used = 0"))) {
-    $form['jsdoc_changes']['#tree'] = true;
-    $query = db_query("SELECT nid, vid FROM {jsdoc_objects} WHERE new = 1 AND version = %d", $object->version);
-    $news = array(
-      '#type' => 'select',
-      '#title' => t('Renamed To'),
-      '#options' => array('0' => '')
-    );
-    while($result = db_fetch_object($query)) {
-      $node = _jsdoc_node_load($result->nid, $result->vid);
-      $resource = _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid);
-      $news['#options'][$node->nid . '_' . $node->vid] = $node->title . ' in ' . $resource->title;
-    }
-
+  $query = db_query("SELECT j.nid, j.vid, j.used, j.new, j.version FROM {jsdoc_objects} j INNER JOIN {node} n ON (n.vid = j.vid) WHERE j.used = 0 OR j.new = 1 ORDER BY n.title");
+  while ($object = db_fetch_object($query)) {
     $node = _jsdoc_node_load($object->nid, $object->vid);
-    $resource = _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid);
+    $project = jsdoc_get_project($node);
+    $resource = jsdoc_get_resource($node);
 
-    $form['jsdoc_changes']['objects'][$node->nid][$node->vid] = array(
-      '#type' => 'fieldset',
-      '#title' => $node->title . ' in ' . theme('jsdoc_resource_source_link', jsdoc_get_project($resource)->title, $resource->title)
-    );
-    $form['jsdoc_changes']['objects'][$node->nid][$node->vid]['delete'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Deleted')
-    );
-
-    if ($form['jsdoc_changes']['objects']) {
-      if (count($news['#options']) > 1) {
-        $form['jsdoc_changes']['objects'][$node->nid][$node->vid]['move'] = $news;
-      }
-      $form['jsdoc_changes']['objects']['#type'] = 'fieldset';
-      $form['jsdoc_changes']['objects']['#title'] = t('Removed Objects');
-      $form['jsdoc_changes']['objects']['#collapsible'] = true;
-      $form['jsdoc_changes']['objects']['#tree'] = true;
+    $new = '';
+    $renamed = '';
+    if ($object->new) {
+      $new = "<input type=\"checkbox\" value=\"{$project->title}|{$node->title}|{$node->nid}|{$node->vid}\" checked=\"checked\" />";
     }
+    else {
+      $renamed = "<select name=\"object[{$project->title}][{$node->nid}][{$node->vid}]\"><option value=\"\">Deleted</option></select>";
+    }
+
+    $rows[] = array($node->title, jsdoc_get_project($node)->title, theme('jsdoc_resource_source_link', jsdoc_get_project($resource)->title, $resource->title), $new, $renamed);
   }
 
-  $form['jsdoc_changes']['submit'] = array(
+  $form['table'] = array(
+    '#value' => theme('table', $header, $rows)
+  );
+
+  $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Next')
   );
@@ -852,22 +842,18 @@ function jsdoc_manage($edit = array()) {
 
 function jsdoc_manage_submit($form_id, $form) {
   if ($form_id == 'jsdoc_manage') {
-    foreach ($form['jsdoc_changes'] as $type => $nids) {
-      if ($type == 'submit') continue;
-
-      foreach ($nids as $nid => $vids) {
+    foreach ($_POST['object'] as $projects) {
+      foreach ($projects as $nid => $vids) {
         foreach ($vids as $vid => $props) {
-          if ($props['delete']) {
-            if ($type == 'objects') {
-              $node = _jsdoc_node_load($nid, $vid);
-              db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE nid = %d AND vid = %d", $nid, $vid);
-              $node->status = 0;
-              node_save($node);
-            }
+          if (!$props) {
+            $node = _jsdoc_node_load($nid, $vid);
+            db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE nid = %d AND vid = %d", $nid, $vid);
+            $node->status = 0;
+            node_save($node);
           }
-          elseif ($props['move']) {
+          else {
             // Delete the new node, update the old node.
-            list($move_nid, $move_vid) = explode('_', $props['move']);
+            list($move_nid, $move_vid) = explode('_', $props);
 
             $node = _jsdoc_node_load($nid, $vid);
             $move_node = _jsdoc_node_load($move_nid, $move_vid);
@@ -921,12 +907,8 @@ function jsdoc_manage_submit($form_id, $form) {
     }
   }
 
-  if (!db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
-    drupal_goto(variable_get('site_frontpage', 'node'));
-  }
-  else {
-    drupal_goto('jsdoc/manage');
-  }
+  db_query("UPDATE {jsdoc_objects} SET new = 0");
+  drupal_goto('');
 }
 
 // Implemented node-type hook functions
