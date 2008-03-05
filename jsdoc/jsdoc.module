@@ -82,8 +82,7 @@ function jsdoc_menu($may_cache) {
     );
   }
   else {
-    if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0"))) {
-      $query = db_query("SELECT COUNT(*) FROM {jsdoc_objects} WHERE used = 0");
+    if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 OR new = 1"))) {
       $items[] = array('path' => 'jsdoc/manage',
         'title' => t('Manage Documentation Changes'),
         'callback' => 'drupal_get_form',
