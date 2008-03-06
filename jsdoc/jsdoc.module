@@ -2311,7 +2311,7 @@ function jsdoc_object_node_view($node, $initialized = null, $allow_private = fal
   );
 
   $form['resource'] = array(
-    '#value' => theme('jsdoc_object_resource', jsdoc_get_resource($node))
+    '#value' => theme('jsdoc_object_resource', jsdoc_get_resource($node), jsdoc_get_project($node))
   );
 
   $examples = array();
