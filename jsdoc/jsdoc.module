@@ -2723,10 +2723,36 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
           if ($obj->nid) {
             $type->fields = array();
             $prototype_chain = jsdoc_get_prototype_chain($obj, array(3, 4));
+
+            for ($i = 0; $i < count($prototype_chain); $i++) {
+              $item = $prototype_chain[$i];
+              if ($mixin_chain_mixins_all = jsdoc_get_parent_mixins($item)) {
+                foreach ($mixin_chain_mixins_all as $mixin_type => $mixin_chain_mixins) {
+                  if ($mixin_type == 'prototype' && is_array($mixin_chain_mixins)) {
+                    ksort($mixin_chain_mixins);
+                    foreach ($mixin_chain_mixins as $mixin) {
+                      if (substr($mixin, -10) == '.prototype') {
+                        // I don't think this is a bad assumption
+                        $mixin = substr($mixin, 0, -10);
+                      }
+                      $mixin = jsdoc_object_node_load($mixin, jsdoc_get_project($item), jsdoc_get_version($item), jsdoc_get_all_provide_nids($item, array(3, 4)));
+                      if ($i > 0 && $prototype_chain[$i - 1]->title == $mixin->title) {
+                        continue;
+                      }
+                      array_splice($prototype_chain, $i++, 0, array($mixin));
+                    }
+                  }
+                }
+              }
+            }
+
             $prototype_chain[] = $obj;
             foreach ($prototype_chain as $obj) {
               if ($obj->nid) {
                 $args = jsdoc_get_child_instances($obj);
+                foreach (jsdoc_get_child_prototypes($obj) as $title => $arg) {
+                  $args[$title] = $arg;
+                }
                 if (!empty($args)) {
                   foreach ($args as $arg) {
                     $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
