@@ -1424,8 +1424,13 @@ function jsdoc_get_parents(&$node) {
       natsort($object->jsdoc_parents[$chain->type][$chain->subtype]);
     }
 
-    $object->jsdoc_parents['all'] = array_unique($object->jsdoc_parents['all']);
-    natcasesort($object->jsdoc_parents['all']);
+    if ($object->jsdoc_parents['all']) {
+      $object->jsdoc_parents['all'] = array_unique($object->jsdoc_parents['all']);
+      natcasesort($object->jsdoc_parents['all']);
+    }
+    else {
+      $object->jsdoc_parents['all'] = array();
+    }
     $node->jsdoc_parents = $object->jsdoc_parents;
   }
   elseif ($node->type == 'jsdoc_variable') {
@@ -1516,7 +1521,12 @@ function jsdoc_get_full_url(&$node) {
 
 function jsdoc_get_variable_object(&$node) {
   if ($node->type == 'jsdoc_variable') {
-    return _jsdoc_resolve_variable($node)->object;
+    if ($object = _jsdoc_resolve_variable($node)->object) {
+      return $object;
+    }
+    else {
+      return $node;
+    }
   }
 
   return $node;
