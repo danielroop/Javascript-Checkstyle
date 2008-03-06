@@ -3484,12 +3484,6 @@ function _jsdoc_cron_chdir($enter=false) {
         watchdog('jsdoc', _jsdoc_dir_location() . t(' could not be accessed'), WATCHDOG_ERROR);
         return false;
     }
-    $last = variable_get('jsdoc_cron_file_ctime', 0);
-    $current = filectime(_jsdoc_file_location());
-    if ($last != $current) {
-      variable_set('jsdoc_cron_file_ctime', $current);
-      db_query("DELETE FROM jsdoc_cache");
-    }
     include_once(_jsdoc_file_location());
   }
   else {
