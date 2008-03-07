@@ -1489,11 +1489,15 @@ function jsdoc_get_classlike(&$node) {
 }
 
 function jsdoc_get_teaser(&$node) {
-  if ($node->type == 'jsdoc_variable' && !$node->teaser) {
-    return $node->teaser = check_markup(_jsdoc_resolve_variable($node)->teaser, variable_get('jsdoc_input_format', 1), FALSE);
+  if (isset($node->formatted_type)) {
+    return $node->formatted_type;
   }
 
-  return $node->teaser;
+  if ($node->type == 'jsdoc_variable' && !$node->teaser) {
+    $node->teaser = _jsdoc_resolve_variable($node)->teaser;
+  }
+
+  return ($node->formatted_type = check_markup($node->teaser, variable_get('jsdoc_input_format', 1), FALSE));
 }
 
 function jsdoc_get_body(&$node) {
