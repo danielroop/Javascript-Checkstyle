@@ -1365,6 +1365,7 @@ function jsdoc_get_parameters(&$node) {
   $object->jsdoc_parameters = array();
   $query = db_query("SELECT name, type, summary, optional, repeating FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
   while ($parameter = db_fetch_array($query)) {
+    $parameter['summary'] = check_markup($parameter['summary'], variable_get('jsdoc_input_format', 1), FALSE);
     $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['repeating']);
     $object->jsdoc_parameters[$parameter['name']] = $parameter;
   }
