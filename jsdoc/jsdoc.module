@@ -2584,7 +2584,7 @@ function _jsdoc_get_object_themed($node, $title=null, $depth=0) {
   $object = (object)array(
     'title' => $title,
     'url' => $node->jsdoc_url,
-    'summary' => jsdoc_get_teaser($node),
+    'summary' => check_markup(jsdoc_get_teaser($node), variable_get('jsdoc_input_format', 1), FALSE),
     'singleton' => jsdoc_is_initialized($node),
     'namespace' => jsdoc_is_namespace($node),
     'private' => jsdoc_is_private($node),
