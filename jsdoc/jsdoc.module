@@ -1489,7 +1489,7 @@ function jsdoc_get_classlike(&$node) {
 
 function jsdoc_get_teaser(&$node) {
   if ($node->type == 'jsdoc_variable' && !$node->teaser) {
-    return $node->teaser = _jsdoc_resolve_variable($node)->teaser;
+    return $node->teaser = check_markup(_jsdoc_resolve_variable($node)->teaser, variable_get('jsdoc_input_format', 1), FALSE);
   }
 
   return $node->teaser;
@@ -2584,7 +2584,7 @@ function _jsdoc_get_object_themed($node, $title=null, $depth=0) {
   $object = (object)array(
     'title' => $title,
     'url' => $node->jsdoc_url,
-    'summary' => check_markup(jsdoc_get_teaser($node), variable_get('jsdoc_input_format', 1), FALSE),
+    'summary' => jsdoc_get_teaser($node),
     'singleton' => jsdoc_is_initialized($node),
     'namespace' => jsdoc_is_namespace($node),
     'private' => jsdoc_is_private($node),
