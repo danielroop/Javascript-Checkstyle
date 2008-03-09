@@ -118,6 +118,7 @@ function jsdoc_install() {
         type varchar(255) NOT NULL,
         updating bool NOT NULL DEFAULT 1, -- Flag for update the next go around
         returns varchar(255) NOT NULL,
+        return_summary longtext NOT NULL,
         source longtext NOT NULL,
         private boolean NOT NULL DEFAULT 0,
         private_parent bool NOT NULL DEFAULT 0,

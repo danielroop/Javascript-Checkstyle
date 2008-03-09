@@ -80,6 +80,13 @@ function jsdoc_menu($may_cache) {
       'callback' => 'jsdoc_jsonp',
       'access' => true
     );
+
+    $items[] = array(
+      'path' => 'jsdoc/ide',
+      'type' => MENU_CALLBACK,
+      'callback' => 'jsdoc_ide',
+      'access' => true
+    );
   }
   else {
     if (db_result(db_query("SELECT 1 FROM {jsdoc_objects} WHERE used = 0 OR new = 1"))) {
@@ -218,7 +225,7 @@ function jsdoc_block($op='list', $delta=0) {
                 $all_namespaces = unserialize($all_namespaces->data);
               }
               if (empty($all_namespaces[$version->nid])) {
-                $query = db_query("SELECT n.title, n.nid, n.vid, jo.type AS jsdoc_type, jo.initialized AS jsdoc_intialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND jo.version = %d AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $version->nid, $project->title, $project->title);
+                $query = db_query("SELECT n.title, n.nid, n.vid, jo.type AS jsdoc_type, jo.initialized AS jsdoc_initialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.private = 0 AND jo.private_parent = 0 AND jo.version = %d AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", $version->nid, $project->title, $project->title);
                 while ($result = db_fetch_object($query)) {
                   if (jsdoc_is_namespace($result)) {
                     $all_namespaces[$version->nid][] = array($result->nid, $result->vid);
@@ -648,6 +655,7 @@ function jsdoc_cron() {
               $content['classlike'],
               $content['type'],
               $content['returns'],
+              $content['return_summary'],
               $content['source'],
               $content['parameters'],
               $content['examples'],
@@ -750,6 +758,7 @@ function jsdoc_help($section = '') {
     <li><em>classlike</em>: True if a function acts like a class.</li>
     <li><em>prototype</em>: This object is attached via the prototype of this function</li>
     <li><em>returns</em>: Object type of the function return.</li>
+    <li><em>return summary</em>: Summary of the function return.</li>
     <li><em>chains</em>: The string literal 'chains'</li>
     <li><em>chain-type</em>: call, or prototype. Basically, either doing this.call(parent); or this.prototype = new parent; respectively</li>
     <li><em>function</em>: A function name</li>
@@ -774,6 +783,7 @@ function jsdoc_help($section = '') {
     'initialized' => boolean,
     'prototype' => '',
     'returns' => '',
+    'return_summary' => '',
     'chains' => array(
       array('chain-type', 'function')
     ),
@@ -879,6 +889,7 @@ function jsdoc_manage_submit($form_id, $form) {
                 $move_node->jsdoc_classlike,
                 $move_node->jsdoc_type,
                 $move_node->jsdoc_returns,
+                $move_node->jsdoc_return_summary,
                 $move_node->jsdoc_source,
                 $move_node->jsdoc_parameters,
                 $move_node->jsdoc_examples,
@@ -1008,7 +1019,7 @@ function jsdoc_object_insert($node) {
   $project = _jsdoc_project_get_or_create(jsdoc_get_project($node)->title);
   $version = _jsdoc_version_get_or_create('HEAD', $project);
 
-  db_query("INSERT INTO {jsdoc_objects} (vid, nid, resource_vid, resource_nid, provide_vid, provide_nid, initialized, classlike, type, returns, source, private, private_parent, version) VALUES (%d, %d, %d, %d, %d, %d, %d, %d, '%s', '%s', '%s', %d, %d, %d)", $node->vid, $node->nid, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, $version->nid);
+  db_query("INSERT INTO {jsdoc_objects} (vid, nid, resource_vid, resource_nid, provide_vid, provide_nid, initialized, classlike, type, returns, return_summary, source, private, private_parent, version) VALUES (%d, %d, %d, %d, %d, %d, %d, %d, '%s', '%s', '%s', '%s', %d, %d, %d)", $node->vid, $node->nid, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_return_summary, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, $version->nid);
 
   _jsdoc_detail_update_joins($node);
 
@@ -1033,13 +1044,13 @@ function jsdoc_object_insert($node) {
 function jsdoc_object_update($node) {
   if ($node->revision) {
     db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE vid = %d", $node->old_vid);
-    db_query("INSERT INTO {jsdoc_objects} SELECT %d, nid, resource_vid, resource_nid, provide_vid, provide_nid, initialized, classlike, type, updating, returns, source, private, private_parent, version, 1, 0 FROM {jsdoc_objects} WHERE vid = %d", $node->vid, $node->old_vid);
+    db_query("INSERT INTO {jsdoc_objects} SELECT %d, nid, resource_vid, resource_nid, provide_vid, provide_nid, initialized, classlike, type, updating, returns, return_summary, source, private, private_parent, version, 1, 0 FROM {jsdoc_objects} WHERE vid = %d", $node->vid, $node->old_vid);
   }
 
   $project = _jsdoc_project_get_or_create(jsdoc_get_project($node)->title);
 
   _jsdoc_detail_update_joins($node);
-  db_query("UPDATE {jsdoc_objects} SET updating = %d, resource_vid = %d, resource_nid = %d, provide_vid = %d, provide_nid = %d, initialized = %d, classlike = %d, type = '%s', returns = '%s', source = '%s', private = %d, private_parent = %d, version = %d WHERE vid = %d", $node->jsdoc_updating, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, jsdoc_get_version($node)->nid, $node->vid);
+  db_query("UPDATE {jsdoc_objects} SET updating = %d, resource_vid = %d, resource_nid = %d, provide_vid = %d, provide_nid = %d, initialized = %d, classlike = %d, type = '%s', returns = '%s', return_summary = '%s', source = '%s', private = %d, private_parent = %d, version = %d WHERE vid = %d", $node->jsdoc_updating, $node->jsdoc_resource_vid, $node->jsdoc_resource, $node->jsdoc_provide_vid, $node->jsdoc_provide, $node->jsdoc_initialized, $node->jsdoc_classlike, $node->jsdoc_type, $node->jsdoc_returns, $node->jsdoc_return_summary, $node->jsdoc_source, $node->jsdoc_private, $node->jsdoc_private_parent, jsdoc_get_version($node)->nid, $node->vid);
 
   db_query("DELETE FROM {jsdoc_parameters} WHERE vid = %d", $node->vid);
 
@@ -1077,7 +1088,7 @@ function jsdoc_object_delete(&$node) {
 function jsdoc_object_load($node) {
   // TODO: Deal with alias
   _jsdoc_init();
-  $additions = db_fetch_object(db_query("SELECT jo.type AS jsdoc_raw_type, jo.returns AS jsdoc_returns, jo.updating AS jsdoc_updating, jo.classlike AS jsdoc_classlike, jo.private AS jsdoc_private, jo.private_parent AS jsdoc_private_parent, jo.resource_nid AS jsdoc_resource, jo.resource_vid AS jsdoc_resource_vid, jo.provide_nid AS jsdoc_provide, jo.provide_vid AS jsdoc_provide_vid, jo.initialized AS jsdoc_initialized, jo.used AS jsdoc_used, jo.version AS jsdoc_version, source AS jsdoc_source, jo.resource_vid != n.vid AS has_revisions FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (jo.resource_vid = nr.vid) JOIN {node} n ON (nr.nid = n.nid) WHERE jo.vid = %d", $node->vid));
+  $additions = db_fetch_object(db_query("SELECT jo.type AS jsdoc_raw_type, jo.returns AS jsdoc_returns, jo.return_summary AS jsdoc_return_summary, jo.updating AS jsdoc_updating, jo.classlike AS jsdoc_classlike, jo.private AS jsdoc_private, jo.private_parent AS jsdoc_private_parent, jo.resource_nid AS jsdoc_resource, jo.resource_vid AS jsdoc_resource_vid, jo.provide_nid AS jsdoc_provide, jo.provide_vid AS jsdoc_provide_vid, jo.initialized AS jsdoc_initialized, jo.used AS jsdoc_used, jo.version AS jsdoc_version, source AS jsdoc_source, jo.resource_vid != n.vid AS has_revisions FROM {jsdoc_objects} jo JOIN {node_revisions} nr ON (jo.resource_vid = nr.vid) JOIN {node} n ON (nr.nid = n.nid) WHERE jo.vid = %d", $node->vid));
 
   $additions->jsdoc_used = round($additions->jsdoc_used);
 
@@ -1351,6 +1362,44 @@ function jsdoc_get_version(&$node) {
   }
 }
 
+function jsdoc_get_return_summary(&$node) {
+  if (isset($node->jsdoc_return_summary)) {
+    return $node->jsdoc_return_summary;
+  }
+
+  $object = jsdoc_get_variable_object($node);
+  if ($object->type == 'jsdoc_variable') {
+    return ($node->jsdoc_return_summary = $object->jsdoc_return_summary = db_result(db_query("SELECT jo.return_summary FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.summary != '' LIMIT 1", $object->title, $object->title)));
+  }
+
+  return $object->jsdoc_return_summary;
+}
+
+function jsdoc_get_return_types(&$node) {
+  if (isset($node->jsdoc_return_types)) {
+    return $node->jsdoc_return_types;
+  }
+
+  $types = array();
+
+  $object = jsdoc_get_variable_object($node);
+  if ($object->type == 'jsdoc_variable') {
+    $query = db_query("SELECT jo.returns FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.returns != '' GROUP BY jo.returns", $object->title, $object->title);
+    while ($result = db_fetch_object($query)) {
+      $types[] = $result->returns;
+    }
+  }
+  elseif ($object->type == 'jsdoc_object') {
+    foreach (preg_split('%\s*\|+\s*%', $object->jsdoc_returns) as $type) {
+      if ($type) {
+        $types[] = $type;
+      }
+    }
+  }
+
+  return ($node->jsdoc_return_types = $object->jsdoc_return_types = $types);
+}
+
 function jsdoc_get_parameters(&$node) {
   if (isset($node->jsdoc_parameters)) {
     return $node->jsdoc_parameters;
@@ -1361,14 +1410,60 @@ function jsdoc_get_parameters(&$node) {
   }
 
   $object = jsdoc_get_variable_object($node);
-
   $object->jsdoc_parameters = array();
-  $query = db_query("SELECT name, type, summary, optional, repeating FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
-  while ($parameter = db_fetch_array($query)) {
-    $parameter['summary'] = check_markup($parameter['summary'], variable_get('jsdoc_input_format', 1), FALSE);
+  $parameters = array();
+  if ($object->type == 'jsdoc_variable') {
+    $query = db_query("SELECT n.vid, jp.name, jp.type, jp.summary, jp.optional, jp.repeating FROM {jsdoc_parameters} jp JOIN {jsdoc_objects} jo ON (jo.vid = jp.vid) JOIN {node} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.used != -1 AND jo.version = %d ORDER BY jp.vid, jp.weight", $object->title, $object->title, jsdoc_get_version($object)->nid);
+    while ($parameter = db_fetch_array($query)) {
+      $parameters[$parameter['vid']][$parameter['name']] = $parameter;
+    }
+
+    $similar = true;
+    $last = array_pop($parameters);
+    foreach ($parameters as $parameter) {
+      if (array_diff(array_keys($last), array_keys($parameter))) {
+        $similar = false;
+      }
+    }
+
+    if ($similar) {
+      $best = $last;
+      $parameters[] = $last;
+      foreach ($parameters as $parameter) {
+        if (strlen($parameter['summary']) > strlen($best['summary'])) {
+          $best['summary'] = $parameter['summary'];
+        }
+        if (strlen($parameter['type']) > strlen($best['type'])) {
+          $best['type'] = $parameter['type'];
+          $best['optional'] = $parameter['optional'];
+          $best['repeating'] = $parameter['repeating'];
+        }
+      }
+      $parameters = array();
+      foreach ($best as $parameter) {
+        unset($parameter['vid']);
+        $parameters[] = $parameter;
+      }
+    }
+    else {
+      $parameters = array();
+    }
+  }
+  else {
+    $query = db_query("SELECT name, type, summary, optional, repeating FROM {jsdoc_parameters} WHERE vid = %d ORDER BY weight", $object->vid);
+    while ($parameter = db_fetch_array($query)) {
+      $parameters[] = $parameter;
+    }
+  }
+
+  foreach ($parameters as $parameter) {
+    $parameter['summary'] = trim(preg_replace('%(^<p>|</p>$)%', '', check_markup($parameter['summary'], variable_get('jsdoc_input_format', 1), FALSE)));
+    $parameter['optional'] = round($parameter['optional']);
+    $parameter['repeating'] = round($parameter['repeating']);
     $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['repeating']);
     $object->jsdoc_parameters[$parameter['name']] = $parameter;
   }
+
   return $object->jsdoc_parameters;
 }
 
@@ -1388,6 +1483,13 @@ function jsdoc_get_examples(&$node, $markedup=false) {
 
 function jsdoc_get_parent_mixins(&$node) {
   return jsdoc_get_parents($node)->mixin;
+}
+
+function jsdoc_get_parent_prototype(&$node) {
+  $parents = jsdoc_get_parents($node);
+  if ($parents->chain && $parents->chain['prototype'] && count($parents->chain['prototype'])) {
+    return $parents->chain['prototype'][0];
+  }
 }
 
 /**
@@ -1497,7 +1599,7 @@ function jsdoc_get_teaser(&$node) {
     $node->teaser = _jsdoc_resolve_variable($node)->teaser;
   }
 
-  return ($node->formatted_type = preg_replace('%(^<p>|</p>$)%', '', check_markup($node->teaser, variable_get('jsdoc_input_format', 1), FALSE)));
+  return ($node->formatted_type = trim(preg_replace('%(^<p>|</p>$)%', '', check_markup($node->teaser, variable_get('jsdoc_input_format', 1), FALSE))));
 }
 
 function jsdoc_get_body(&$node) {
@@ -1577,11 +1679,8 @@ function jsdoc_get_type(&$node) {
       }
     }
     $types = array_unique($types);
-    if (count($types) == 1) {
-      $type = $types[0];
-    }
-    elseif (count($types) > 1) {
-      $type = 'mixed';
+    if (count($types)) {
+      $type = implode('|', $types);
     }
   }
   elseif ($node->type == 'jsdoc_object') {
@@ -1611,7 +1710,7 @@ function jsdoc_get_resource(&$node) {
 
 function jsdoc_get_source($node, $depth=0) {
   if ($depth++ < 2 && $node->type == 'jsdoc_object' && empty($node->jsdoc_source)) {
-    if ($constructor = _jsdoc_resolve_constructor($node, $depth)) {
+    if ($constructor = jsdoc_resolve_constructor($node, true, $depth)) {
       $node->jsdoc_source = $constructor->source;
     }
   }
@@ -1656,7 +1755,7 @@ function jsdoc_is_namespace(&$node) {
   $namespace = false;
 
   if (jsdoc_get_type($node) == 'Object' || jsdoc_is_initialized($node)) {
-    $query = db_query("SELECT 1 FROM node n JOIN jsdoc_objects jo ON (jo.vid = n.vid) WHERE jo.type = 'Function' AND jo.private = 0 AND jo.private_parent = 0 AND n.title LIKE '%s' AND n.title NOT LIKE '%.toString' LIMIT 1", $node->title . '.%');
+    $query = db_query("SELECT 1 FROM node n JOIN jsdoc_objects jo ON (jo.vid = n.vid) WHERE jo.type = 'Function' AND n.title LIKE '%s.%%' AND n.title NOT LIKE '%.toString' LIMIT 1", $node->title);
     if (db_num_rows($query)) {
       $namespace = true;
     }
@@ -1741,6 +1840,10 @@ function jsdoc_get_children(&$node) {
   }
 
   return jsdoc_get_children($node);
+}
+
+function jsdoc_get_query_variables($project){
+  return db_query("SELECT n.title, n.nid, n.vid, n.type, jo.type AS jsdoc_raw_type, jo.classlike AS jsdoc_classlike, jo.initialized AS jsdoc_initialized FROM {jsdoc_objects} jo JOIN {node} n ON (n.vid = jo.vid) WHERE jo.version = %d AND (n.title = '%s' OR n.title LIKE '%s.%%') AND (jo.type = 'Function' OR jo.type = 'Object' OR (jo.type = 'Function' AND jo.initialized = 1)) GROUP BY BINARY n.title ORDER BY n.title", jsdoc_get_version($project)->nid, $project->title, $project->title);
 }
 
 /**
@@ -2152,6 +2255,173 @@ function jsdoc_parameter_weight_sort($a, $b){
 }
 
 /**
+ * Path: jsdoc/ide
+ */
+function jsdoc_ide($ide) {
+  if ($ide == 'aptana') {
+    header('Content-type: text/plain');
+
+    $document = new DomDocument();
+    $document->encoding = 'utf-8';
+    $document->standalone = true;
+    $document->formatOutput = true;
+    $javascript = $document->appendChild($document->createElement('javascript'));
+    $overview = $javascript->appendChild($document->createElement('overview'));
+    $overview->appendChild($document->createTextNode('The Dojo Toolkit is awesome'));
+
+    foreach (jsdoc_projects() as $project) {
+      $query = jsdoc_get_query_variables($project);
+      while ($result = db_fetch_object($query)) {
+        set_time_limit(60);
+        if (jsdoc_is_namespace($result) || jsdoc_get_type($result) == 'Constructor') {
+          $node = _jsdoc_node_load($result->nid, $result->vid);
+          $class = $javascript->appendChild($document->createElement('class'));
+          $class->setAttribute('type', $node->title);
+
+          if (jsdoc_get_teaser($node)) {
+            $class->appendChild($document->createElement('description'))->appendChild($document->createTextNode(jsdoc_get_teaser($node)));
+          }
+
+          $superclasses = array();
+          $class_mixins = array();
+          if (jsdoc_get_type($node) != 'Constructor') {
+            $superclasses[] = 'Object';
+          }
+          else {
+            $superclass = jsdoc_get_parent_prototype($node);
+
+            if ($constructor = jsdoc_resolve_constructor($node, false)) {
+              $constructor_element = $class->appendChild($document->createElement('constructors'))->appendChild($document->createElement('constructor'));
+              $constructor_element->setAttribute('scope', 'instance');
+              if (jsdoc_get_teaser($constructor)) {
+                $constructor_element->appendChild($document->createElement('description'))->appendChild($document->createTextNode(jsdoc_get_teaser($constructor)));
+              }
+              _jsdoc_ide_build_parameters(jsdoc_get_parameters($constructor), $document, $constructor_element);
+            }
+
+            if ($superclass == 'window') {
+              unset($superclass);
+            }
+            if (!$superclass) {
+              $superclass = 'Object';
+            }
+            $superclasses[] = $superclass;
+            if ($mixins = jsdoc_get_parent_mixins($node)) {
+              if ($mixins['prototype']) {
+                foreach ($mixins['prototype'] as $mixin) {
+                  if (preg_match('%\.prototype$%', $mixin)) {
+                    $superclasses[] = preg_replace('%\.prototype$%', '', $mixin);
+                  }
+                  else {
+                    $class_mixins['instance'][] = array('static', $mixin);
+                  }
+                }
+              }
+              if ($mixins['normal']) {
+                foreach ($mixins['normal'] as $mixin) {
+                  if (preg_match('%\.prototype$%', $mixin)) {
+                    $class_mixins['static'][] = array('instance', preg_replace('%\.prototype$%', '', $mixin));
+                  }
+                  else {
+                    $class_mixins['static'][] = array('static', $mixin);
+                  }
+                }
+              }
+            }
+          }
+          $class->setAttribute('superclass', implode(' ', array_unique($superclasses)));
+
+          foreach ($class_mixins as $scope => $class_mixin) {
+            $mixins = $class->appendChild($document->createElement('mixins'));
+            $mixins->setAttribute('scope', $scope);
+            foreach ($class_mixin as $scoped_mixin) {
+              $mixin = $mixins->appendChild($document->createElement('mixin'));
+              $mixin->setAttribute('scope', $scoped_mixin[0]);
+              $mixin->setAttribute($type, $scoped_mixin[1]);
+            }
+          }
+
+          $properties = array();
+          $methods = array();
+          $childrens = jsdoc_get_children($node);
+          foreach ($childrens as $type => $children) {
+            if ($type == 'variables' || $type == 'instances' || $type == 'prototypes') {
+              foreach ($children as $child) {
+                unset($element);
+
+                if (jsdoc_get_type($child) == 'Function') {
+                  if (jsdoc_is_initialized($child)) {
+                    continue;
+                  }
+                  $methods[] = $element = $document->createElement('method');
+
+                  _jsdoc_ide_build_parameters(jsdoc_get_parameters($child), $document, $element);
+                  if ($types = jsdoc_get_return_types($child)) {
+                    $return_types = $element->appendChild($document->createElement('return-types'));
+                    foreach ($types as $return_type) {
+                      $return_types->appendChild($document->createElement('return-type'))->setAttribute('type', $return_type);
+                    }
+                  }
+                }
+                elseif (!jsdoc_is_namespace($child) && jsdoc_get_type($child) != 'Constructor') {
+                  $properties[] = $element = $document->createElement('property');
+                  $child_type = jsdoc_get_type($child);
+                  $element->setAttribute('type', ($child_type) ? str_replace(array('?', '...'), array('', ''), $child_type) : 'Object');
+                  $element->setAttribute('access', 'read-write');
+                }
+
+                if ($element) {
+                  $element->setAttribute('scope', ($type == 'variables') ? 'static' : 'instance');
+                  $name = preg_replace('%^' . $node->title . '\.%', '', $child->title);
+                  $element->setAttribute('name', $name);
+                  if (jsdoc_is_private($child)) {
+                    $element->setAttribute('visibility', 'internal');
+                  }
+                  if (jsdoc_get_teaser($child)) {
+                    $element->appendChild($document->createElement('description'))->appendChild($document->createTextNode(jsdoc_get_teaser($child)));
+                  }
+                }
+              }
+            }
+          }
+          if ($properties) {
+            $properties_element = $class->appendChild($document->createElement('properties'));
+            foreach ($properties as $property) {
+              $properties_element->appendChild($property);
+            }
+          }
+          if ($methods) {
+            $methods_element = $class->appendChild($document->createElement('methods'));
+            foreach ($methods as $method) {
+              $methods_element->appendChild($method);
+            }
+          }
+        }
+      }
+    }
+
+    print $document->saveXML();
+  }
+}
+
+function _jsdoc_ide_build_parameters($parameters, $document, &$element) {
+  if (!$parameters) {
+    return;
+  }
+
+  $parameters_element = $element->appendChild($document->createElement('parameters'));
+  foreach ($parameters as $parameter) {
+    $parameter_element = $parameters_element->appendChild($document->createElement('parameter'));
+    $parameter_element->setAttribute('name', $parameter['name']);
+    $parameter_element->setAttribute('type', ($parameter['type']) ? $parameter['type'] : 'Object');
+    $parameter_element->setAttribute('usage', ($parameter['optional']) ? 'optional' : (($parameter['repeating']) ? 'one-or-more' : 'required'));
+    if ($parameter['summary']) {
+      $parameter_element->appendChild($document->createElement('description'))->appendChild($document->createTextNode($parameter['summary']));
+    }
+  }
+}
+
+/**
  * Path: jsdoc/jsonp
  */
 function jsdoc_jsonp($batch=false, $json=false) {
@@ -2190,12 +2460,20 @@ function jsdoc_jsonp($batch=false, $json=false) {
   }
 
   $attributes = ($_JSON['attributes']) ? $_JSON['attributes'] : array('summary', 'type', 'parameters');
+  if (!is_array($attributes)) {
+    $attributes = array($attributes);
+  }
 
   foreach ($names as $name) {
     if (empty($name)) {
       continue;
     }
-    $nodes = jsdoc_object_nodes_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], $_JSON['exact']);
+    if ($_JSON['exact']) {
+      $nodes = array(jsdoc_object_node_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], true));
+    }
+    else {
+      $nodes = jsdoc_object_nodes_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], false);
+    }
     foreach ($nodes as $node) {
       $formatted = (object)array('name' => $node->title);
       if ($_JSON['exact'] && count($nodes) > 1) {
@@ -2647,7 +2925,11 @@ function _jsdoc_get_object_themed($node, $title=null, $depth=0) {
   return $object;
 }
 
-function _jsdoc_resolve_constructor(&$node, $depth=0) {
+function jsdoc_resolve_constructor(&$node, $cleaned=true, $depth=0) {
+  if (trim($node->jsdoc_source) || jsdoc_get_parameters($node)) {
+    return ($cleaned) ? _jsdoc_get_object_themed($node, $node->title, $depth) : $node;
+  }
+
   $prototype_objects = array();
   $prototype_chain = jsdoc_get_prototype_chain($node, array(3, 4));
   $prototype_chain[] = $node;
@@ -2663,19 +2945,22 @@ function _jsdoc_resolve_constructor(&$node, $depth=0) {
               $title = substr($title, strlen($prototype->title) + 1);
             }
             $prototype_object_children[$title] = _jsdoc_get_object_themed($child, $title, $depth);
+            $prototype_object_children[$title]->node = $child;
           }
         }
       }
     }
     if (!empty($prototype_object_children)) {
+      $prototype_object = _jsdoc_get_object_themed($prototype, $prototype->title, $depth);
+      $prototype_object->node = $prototype;
       $prototype_objects[] = (object)array(
-        'node' => _jsdoc_get_object_themed($prototype, $prototype->title, $depth),
+        'node' => $prototype_object,
         'children' => $prototype_object_children
       );
     }
   }
   if ($constructor = theme('jsdoc_resolve_constructor', $prototype_objects)) {
-    return $constructor;
+    return ($cleaned) ? $constructor : $constructor->node;
   }
 }
 
@@ -2688,7 +2973,8 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
   $retrieved_parameters = jsdoc_get_parameters($node);
 
   if ($depth++ < 2 && empty($retrieved_parameters) && jsdoc_get_type($node) == 'Constructor') {
-    if ($constructor = _jsdoc_resolve_constructor($node, $depth)) {
+    if ($constructor = jsdoc_resolve_constructor($node, true, $depth)) {
+      $node->jsdoc_parameters = jsdoc_get_parameters($constructor->node);
       $parameters = $constructor->parameters;
     }
   }
@@ -2871,7 +3157,7 @@ function _jsdoc_object_mixin($node, $object) {
  *
  * For the rest of the values, the values from JS win.
  */
-function _jsdoc_object_get_or_create($namespace, $name, $summary, $description, $resource, $provide, $private, $private_parent, $initialized, $classlike, $type, $returns, $source, $parameters, $examples, $aliases, $instance, $prototype, $chains, $mixins) {
+function _jsdoc_object_get_or_create($namespace, $name, $summary, $description, $resource, $provide, $private, $private_parent, $initialized, $classlike, $type, $returns, $return_summary, $source, $parameters, $examples, $aliases, $instance, $prototype, $chains, $mixins) {
   if (!$nid_vid = db_fetch_object(db_query("SELECT nr.nid, MAX(nr.vid) AS vid FROM {jsdoc_objects} j JOIN {node_revisions} nr ON (nr.vid = j.vid) WHERE nr.title = '%s' AND BINARY nr.title = '%s' AND j.resource_vid = %d GROUP BY nr.nid", $name, $name, $resource->vid))) {
     // Create a node for this object if we don't already have one
     $node = (object)array(
@@ -2896,6 +3182,7 @@ function _jsdoc_object_get_or_create($namespace, $name, $summary, $description, 
       'jsdoc_classlike' => $classlike, // immutable by source
       'jsdoc_type' => $type, // immutable
       'jsdoc_returns' => $returns, // from source
+      'jsdoc_return_summary' => $return_summary, // from source
       'jsdoc_source' => $source, // from source
       'jsdoc_parameters' => $parameters, // from source
       'jsdoc_examples' => $examples, // from source. Although I'd like to add a screen for new ones
@@ -2956,6 +3243,7 @@ function _jsdoc_object_get_or_create($namespace, $name, $summary, $description, 
     $node->jsdoc_private_parent = $private_parent;
     $node->jsdoc_initialized = $initialized;
     $node->jsdoc_returns = $returns;
+    $node->jsdoc_return_summary = $return_summary;
     $node->jsdoc_resource = $resource->nid;
     $node->jsdoc_resource_vid = $resource->vid;
     $node->jsdoc_provide = $provide->nid;
@@ -3732,7 +4020,10 @@ function _jsdoc_resolve_variable(&$node) {
           $object_type = $result->type;
         }
         elseif ($object_type != $result->type) {
-          $object_type = 'mixed';
+          if ($object_type) {
+            $object_type .= '|';
+          }
+          $object_type .= $result->type;
         }
       }
       if ($result->classlike) {
