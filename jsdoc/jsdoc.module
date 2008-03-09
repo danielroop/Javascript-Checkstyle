@@ -1457,7 +1457,7 @@ function jsdoc_get_parameters(&$node) {
   }
 
   foreach ($parameters as $parameter) {
-    $parameter['summary'] = trim(preg_replace('%(^<p>|</p>$)%', '', check_markup($parameter['summary'], variable_get('jsdoc_input_format', 1), FALSE)));
+    $parameter['summary'] = trim(preg_replace('%(^<p>|</p>$)%', '', check_markup(str_replace("\n", ' ', $parameter['summary']), variable_get('jsdoc_input_format', 1), FALSE)));
     $parameter['optional'] = round($parameter['optional']);
     $parameter['repeating'] = round($parameter['repeating']);
     $parameter['jsdoc_formatted'] = _jsdoc_format_type($parameter['type'], $parameter['optional'], $parameter['repeating']);
@@ -2459,7 +2459,7 @@ function jsdoc_jsonp($batch=false, $json=false) {
     $names = array($_JSON['name']);
   }
 
-  $attributes = ($_JSON['attributes']) ? $_JSON['attributes'] : array('summary', 'type', 'parameters');
+  $attributes = ($_JSON['attributes']) ? $_JSON['attributes'] : array('summary', 'type', 'returns', 'parameters');
   if (!is_array($attributes)) {
     $attributes = array($attributes);
   }
@@ -2487,6 +2487,11 @@ function jsdoc_jsonp($batch=false, $json=false) {
           case 'type':
             $formatted->type = jsdoc_get_type($node);
             break;
+          case 'returns':
+            $formatted->returns = array(
+              'type' => implode('|', jsdoc_get_return_types($node)),
+              'summary' => jsdoc_get_return_summary($node)
+            );
           case 'parameters':
             $formatted->parameters = _jsdoc_get_parameters_themed($node, true);
             break;
