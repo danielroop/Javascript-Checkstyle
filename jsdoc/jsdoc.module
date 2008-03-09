@@ -1363,16 +1363,18 @@ function jsdoc_get_version(&$node) {
 }
 
 function jsdoc_get_return_summary(&$node) {
-  if (isset($node->jsdoc_return_summary)) {
-    return $node->jsdoc_return_summary;
+  if (isset($node->jsdoc_return_summary_formatted)) {
+    return $node->jsdoc_return_summary_formatted;
   }
 
   $object = jsdoc_get_variable_object($node);
   if ($object->type == 'jsdoc_variable') {
-    return ($node->jsdoc_return_summary = $object->jsdoc_return_summary = db_result(db_query("SELECT jo.return_summary FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.summary != '' LIMIT 1", $object->title, $object->title)));
+    $db_result(db_query("SELECT jo.return_summary FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.summary != '' LIMIT 1", $object->title, $object->title));
+    $node->jsdoc_return_summary = $object->jsdoc_return_summary = $summary;
+    return ($node->jsdoc_return_summary = $object->jsdoc_return_summary = $summary);
   }
 
-  return $object->jsdoc_return_summary;
+  return ($node->jsdoc_return_summary_formatted = $object->jsdoc_return_summary_formatted = trim(preg_replace('%(^<p>|</p>$)%', '', check_markup(str_replace("\n", ' ', $object->jsdoc_return_summary), variable_get('jsdoc_input_format', 1), FALSE))));
 }
 
 function jsdoc_get_return_types(&$node) {
