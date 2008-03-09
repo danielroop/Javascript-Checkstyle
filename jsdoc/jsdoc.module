@@ -1442,9 +1442,11 @@ function jsdoc_get_parameters(&$node) {
         }
       }
       $parameters = array();
-      foreach ($best as $parameter) {
-        unset($parameter['vid']);
-        $parameters[] = $parameter;
+      if($best){
+        foreach ($best as $parameter) {
+          unset($parameter['vid']);
+          $parameters[] = $parameter;
+        }
       }
     }
     else {
