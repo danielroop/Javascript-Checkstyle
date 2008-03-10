@@ -1369,7 +1369,7 @@ function jsdoc_get_return_summary(&$node) {
 
   $object = jsdoc_get_variable_object($node);
   if ($object->type == 'jsdoc_variable') {
-    $db_result(db_query("SELECT jo.return_summary FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.summary != '' LIMIT 1", $object->title, $object->title));
+    $summary = db_result(db_query("SELECT jo.return_summary FROM {jsdoc_objects} jo JOIN {node_revisions} n ON (n.vid = jo.vid) WHERE n.title = '%s' AND BINARY n.title = '%s' AND jo.summary != '' LIMIT 1", $object->title, $object->title));
     $node->jsdoc_return_summary = $object->jsdoc_return_summary = $summary;
     return ($node->jsdoc_return_summary = $object->jsdoc_return_summary = $summary);
   }
