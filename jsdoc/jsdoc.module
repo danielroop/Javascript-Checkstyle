@@ -2473,13 +2473,15 @@ function jsdoc_jsonp($batch=false, $json=false) {
       continue;
     }
     if ($_JSON['exact']) {
-      $nodes = array(jsdoc_object_node_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], true));
+      if ($nodes = jsdoc_object_node_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], true)){
+        $nodes = array($nodes);
+      }
     }
     else {
       $nodes = jsdoc_object_nodes_load($name, $_JSON['project'], $_JSON['version'], $_JSON['resource'], false);
     }
     foreach ($nodes as $node) {
-      $formatted = (object)array('name' => $node->title);
+      $formatted = (object)array('name' => $name);
       if ($_JSON['exact'] && count($nodes) > 1) {
         $formatted->project = jsdoc_get_project($node)->title;
       }
@@ -2498,6 +2500,9 @@ function jsdoc_jsonp($batch=false, $json=false) {
             );
           case 'parameters':
             $formatted->parameters = _jsdoc_get_parameters_themed($node, true);
+            if (!count($formatted->parameters)) {
+              unset($formatted->parameters);
+            }
             break;
         }
       }
@@ -2512,6 +2517,16 @@ function jsdoc_jsonp($batch=false, $json=false) {
       }
       $output[] = $formatted;
     }
+  }
+
+  $found = array();
+  foreach ($output as $object) {
+    $found[] = $object->name;
+  }
+  foreach (array_diff($names, $found) as $name) {
+    $output[] = (object)array(
+      'name' => $name
+    );
   }
 
   if ($recursion) {
