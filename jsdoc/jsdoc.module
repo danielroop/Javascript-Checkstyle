@@ -2601,11 +2601,6 @@ function jsdoc_variable_node_view($node) {
   );
 
   $parameters = _jsdoc_get_parameters_themed($node);
-  $form['parameters'] = array(
-    '#value' => theme('jsdoc_function_parameters', $parameters),
-    '#weight' => 15
-  );
-
   $function = (object)array(
     'signature' => _jsdoc_build_function_signature($node, $parameters)
   );
@@ -2614,6 +2609,11 @@ function jsdoc_variable_node_view($node) {
   }
   $form['function'] = array(
     '#value' => theme('jsdoc_function_information', $function, array()),
+    '#weight' => 15
+  );
+
+  $form['parameters'] = array(
+    '#value' => theme('jsdoc_function_parameters', $parameters),
     '#weight' => 20
   );
 
