@@ -4192,56 +4192,38 @@ function theme_jsdoc_object_children($children) {
   $output .= '<legend>Fields</legend>';
   $output .= '<div class="fieldset-wrapper">';
 
-  foreach($children as $child){
-    
-    if($child->type){
-      if($child->type->title=="Constructor") $constructors[]=$child;
-      else if($child->type->title=="Function") $functions[]=$child;
-      else if($child->normal) $statics[]=$child;
-      else $objects[]=$child;
-    } else {
-      $objects[]=$child;
+  foreach ($children as $child) {
+    $output .= '<div class="form-item">';
+    $output .= l($child->title, $child->url);
+    if ($child->type && $key!='Functions' && $key!="Constructors") {
+      $output .= ': <small>' . $child->type->a . '</small> ';
     }
-  }
-
-  $types = array("Statics"=>$statics, "Constructors"=>$constructors, "Properties"=>$objects, "Functions"=>$functions);
-  foreach($types as $key=>$arr){
-    if(count($arr)){
-      $output .= '<h2>' . $key . '</h2>';
-      foreach ($arr as $child) {
-      $output .= '<div class="form-item">';
-      $output .= l($child->title, $child->url);
-      if ($child->type && $key!='Functions' && $key!="Constructors") {
-        $output .= ': <small>' . $child->type->a . '</small> ';
-      }
-      if($child->signature){
-        $output .= $child->signature;
-      }
-	  else if($key=="Functions"){
-        $output .= '() ';
-      }
-      if ($child->inheritance) {
-        $output .= ' <div><small>';
-        if ($child->override) {
-          $output .= ' Overrides ';
-        }
-        else {
-          $output .= ' Defined by ';
-        }
-        foreach ($child->inheritance as $i => $parent) {
-          if ($i) {
-            $output .= ', ';
-          }
-          $output .= l($parent->title, $parent->url);
-        }
-        $output .= '</small></div>';
-      }
-      if ($child->summary) {
-        $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
-      }
-      $output .= '</div>';
-      }
+    if($child->signature){
+      $output .= $child->signature;
     }
+    else if($key=="Functions"){
+      $output .= '() ';
+    }
+    if ($child->inheritance) {
+      $output .= ' <div><small>';
+      if ($child->override) {
+        $output .= ' Overrides ';
+      }
+      else {
+        $output .= ' Defined by ';
+      }
+      foreach ($child->inheritance as $i => $parent) {
+        if ($i) {
+          $output .= ', ';
+        }
+        $output .= l($parent->title, $parent->url);
+      }
+      $output .= '</small></div>';
+    }
+    if ($child->summary) {
+      $output .= '<div>' . str_replace("<", "&lt;", str_replace(">", "&gt;", $child->summary)) . '</div>';
+    }
+    $output .= '</div>';
   }
   
   $output .= '</div>';
