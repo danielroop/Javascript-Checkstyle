@@ -3089,8 +3089,9 @@ function _jsdoc_get_type_themed($type, $node, $cleaned){
       }
       if (empty($type->fields)) {
         unset($type->fields);
+      }else{
+        uksort($type->fields, 'strnatcasecmp');
       }
-      uksort($type->fields, 'strnatcasecmp');
     }
     return $type;
   }
