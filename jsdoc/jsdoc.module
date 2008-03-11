@@ -2595,9 +2595,26 @@ function jsdoc_variable_node_view($node) {
       'href' => l($resource_value->title, 'jsdoc/' . jsdoc_get_project($node)->title . '/HEAD/' . str_replace('/', '__', $resource_value->title) . '/' . $node->title)
     );
   }
-  $form['jsdoc_resources'] = array(
+  $form['resources'] = array(
     '#value' => theme('jsdoc_object_resources', $node, $display_resources),
     '#weight' => 10
+  );
+
+  $parameters = _jsdoc_get_parameters_themed($node);
+  $form['parameters'] = array(
+    '#value' => theme('jsdoc_function_parameters', $parameters),
+    '#weight' => 15
+  );
+
+  $function = (object)array(
+    'signature' => _jsdoc_build_function_signature($node, $parameters)
+  );
+  if (count($parameters)) {
+    $function->parameters = $parameters;
+  }
+  $form['function'] = array(
+    '#value' => theme('jsdoc_function_information', $function, array()),
+    '#weight' => 20
   );
 
   $children = array();
@@ -2613,7 +2630,7 @@ function jsdoc_variable_node_view($node) {
     uksort($children, "strnatcasecmp");
     $form['children'] = array(
       '#value' => theme('jsdoc_object_children', $children),
-      '#weight' => 20
+      '#weight' => 30
     );
   }
 
