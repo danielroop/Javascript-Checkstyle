@@ -2495,9 +2495,20 @@ function jsdoc_jsonp($batch=false, $json=false) {
             break;
           case 'returns':
             $formatted->returns = array(
-              'type' => implode('|', jsdoc_get_return_types($node)),
+              'types' => array(),
               'summary' => jsdoc_get_return_summary($node)
             );
+            foreach (jsdoc_get_return_types($node) as $type) {
+              $themed = _jsdoc_get_type_themed($type, $node, true);
+              if ($themed) {
+                $formatted->returns['types'][] = $themed;
+              }
+              else {
+                $formatted->returns['types'][] = array(
+                  'title' => $type
+                );
+              }
+            }
           case 'parameters':
             $formatted->parameters = _jsdoc_get_parameters_themed($node, true);
             if (!count($formatted->parameters)) {
@@ -2988,6 +2999,103 @@ function jsdoc_resolve_constructor(&$node, $cleaned=true, $depth=0) {
   }
 }
 
+function _jsdoc_get_type_themed($type, $node, $cleaned){
+  $obj = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+  if ($obj) {
+    $type = (object)array(
+      'title' => $obj->title,
+      'summary' => jsdoc_get_teaser($obj),
+      'fields' => false
+    );
+    if (!$cleaned) {
+      $type->url = $obj->jsdoc_url;
+      $type->a = l($obj->title, $obj->jsdoc_url);
+    }
+    // It will have an nid if it's local. For example type: Function isn't local
+    if ($obj->nid) {
+      $type->fields = array();
+      $prototype_chain = jsdoc_get_prototype_chain($obj, array(3, 4));
+
+      for ($i = 0; $i < count($prototype_chain); $i++) {
+        $item = $prototype_chain[$i];
+        if ($mixin_chain_mixins_all = jsdoc_get_parent_mixins($item)) {
+          foreach ($mixin_chain_mixins_all as $mixin_type => $mixin_chain_mixins) {
+            if ($mixin_type == 'prototype' && is_array($mixin_chain_mixins)) {
+              ksort($mixin_chain_mixins);
+              foreach ($mixin_chain_mixins as $mixin) {
+                if (substr($mixin, -10) == '.prototype') {
+                  // I don't think this is a bad assumption
+                  $mixin = substr($mixin, 0, -10);
+                }
+                $mixin = jsdoc_object_node_load($mixin, jsdoc_get_project($item), jsdoc_get_version($item), jsdoc_get_all_provide_nids($item, array(3, 4)));
+                if ($i > 0 && $prototype_chain[$i - 1]->title == $mixin->title) {
+                  continue;
+                }
+                array_splice($prototype_chain, $i++, 0, array($mixin));
+              }
+            }
+          }
+        }
+      }
+
+      $prototype_chain[] = $obj;
+      foreach ($prototype_chain as $obj) {
+        if ($obj->nid) {
+          $args = jsdoc_get_child_instances($obj);
+          foreach (jsdoc_get_child_prototypes($obj) as $title => $arg) {
+            $args[$title] = $arg;
+          }
+          if (!empty($args)) {
+            foreach ($args as $arg) {
+              $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
+
+              $field = (object)array(
+                'title' => $title,
+                'summary' => jsdoc_get_teaser($arg),
+                'types' => false
+              );
+              if (!$cleaned) {
+                $field->url = $arg->jsdoc_url;
+                $field->a = l($title, $arg->jsdoc_url);
+              }
+
+              $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
+              foreach ($field_types as $field_type) {
+                $found = 0;
+                $field_type = str_replace('?', '', $field_type, $found);
+                $optional = ($found > 0);
+                $found = 0;
+                $field_type = str_replace('...', '', $field_type, $found);
+                $repeating = ($found > 0);
+
+                $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
+                $field_type = (object)array(
+                  'title' => $field_obj->title,
+                  'repeating' => $repeating,
+                  'optional' => $optional,
+                  'summary' => jsdoc_get_teaser($field_obj)
+                );
+                if (!$cleaned) {
+                  $field_type->url = $field_obj->jsdoc_url;
+                  $field_type->a = l($field_obj->title, $field_obj->jsdoc_url);
+                }
+                $field->types[] = $field_type;
+              }
+
+              $type->fields[$field->title] = $field;
+            }
+          }
+        }
+      }
+      if (empty($type->fields)) {
+        unset($type->fields);
+      }
+      uksort($type->fields, 'strnatcasecmp');
+    }
+    return $type;
+  }
+}
+
 function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
   if (isset($node->jsdoc_parameters_themed)) {
     return $node->jsdoc_parameters_themed;
@@ -3019,102 +3127,14 @@ function _jsdoc_get_parameters_themed(&$node, $cleaned=false, $depth=0) {
       $type = $item['type'];
       $types = array();
       if (strpos($type, '|') !== false) {
-        $types = preg_split('%\|+%', $type);
+        $types = preg_split('%\s*\|+\s*%', $type);
       }
       elseif ($type) {
         $types = array($type);
       }
 
       foreach ($types as $type) {
-        $obj = jsdoc_object_node_load($type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
-        if ($obj) {
-          $type = (object)array(
-            'title' => $obj->title,
-            'summary' => jsdoc_get_teaser($obj),
-            'fields' => false
-          );
-          if (!$cleaned) {
-            $type->url = $obj->jsdoc_url;
-            $type->a = l($obj->title, $obj->jsdoc_url);
-          }
-          // It will have an nid if it's local. For example type: Function isn't local
-          if ($obj->nid) {
-            $type->fields = array();
-            $prototype_chain = jsdoc_get_prototype_chain($obj, array(3, 4));
-
-            for ($i = 0; $i < count($prototype_chain); $i++) {
-              $item = $prototype_chain[$i];
-              if ($mixin_chain_mixins_all = jsdoc_get_parent_mixins($item)) {
-                foreach ($mixin_chain_mixins_all as $mixin_type => $mixin_chain_mixins) {
-                  if ($mixin_type == 'prototype' && is_array($mixin_chain_mixins)) {
-                    ksort($mixin_chain_mixins);
-                    foreach ($mixin_chain_mixins as $mixin) {
-                      if (substr($mixin, -10) == '.prototype') {
-                        // I don't think this is a bad assumption
-                        $mixin = substr($mixin, 0, -10);
-                      }
-                      $mixin = jsdoc_object_node_load($mixin, jsdoc_get_project($item), jsdoc_get_version($item), jsdoc_get_all_provide_nids($item, array(3, 4)));
-                      if ($i > 0 && $prototype_chain[$i - 1]->title == $mixin->title) {
-                        continue;
-                      }
-                      array_splice($prototype_chain, $i++, 0, array($mixin));
-                    }
-                  }
-                }
-              }
-            }
-
-            $prototype_chain[] = $obj;
-            foreach ($prototype_chain as $obj) {
-              if ($obj->nid) {
-                $args = jsdoc_get_child_instances($obj);
-                foreach (jsdoc_get_child_prototypes($obj) as $title => $arg) {
-                  $args[$title] = $arg;
-                }
-                if (!empty($args)) {
-                  foreach ($args as $arg) {
-                    $title = $parameter->name . '.' . substr($arg->title, strlen($obj->title) + 1);
-
-                    $field = (object)array(
-                      'title' => $title,
-                      'summary' => jsdoc_get_teaser($arg),
-                      'types' => false
-                    );
-                    if (!$cleaned) {
-                      $field->url = $arg->jsdoc_url;
-                      $field->a = l($title, $arg->jsdoc_url);
-                    }
-
-                    $field_types = preg_split('%\|+%', jsdoc_get_type($arg));
-                    foreach ($field_types as $field_type) {
-                      $found = 0;
-                      $field_type = str_replace('?', '', $field_type, $found);
-                      $optional = ($found > 0);
-                      $found = 0;
-                      $field_type = str_replace('...', '', $field_type, $found);
-                      $repeating = ($found > 0);
-
-                      $field_obj = jsdoc_object_node_load($field_type, jsdoc_get_project($node), jsdoc_get_version($node), jsdoc_get_all_provide_nids($node, array(3, 4)));
-                      $field_type = (object)array(
-                        'title' => $field_obj->title,
-                        'repeating' => $repeating,
-                        'optional' => $optional,
-                        'summary' => jsdoc_get_teaser($field_obj)
-                      );
-                      if (!$cleaned) {
-                        $field_type->url = $field_obj->jsdoc_url;
-                        $field_type->a = l($field_obj->title, $field_obj->jsdoc_url);
-                      }
-                      $field->types[] = $field_type;
-                    }
-
-                    $type->fields[$field->title] = $field;
-                  }
-                }
-              }
-            }
-            uksort($type->fields, 'strnatcasecmp');
-          }
+        if ($type = _jsdoc_get_type_themed($type, $node, $cleaned)) {
           $parameter->types[] = $type;
         }
       }
