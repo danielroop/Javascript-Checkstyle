@@ -492,7 +492,7 @@ function jsdoc_cron() {
   if (_jsdoc_cron_validate_include()) {
     // This is messy since we want to do this without doing any DB manipulation to run this check
     $current_files = call_user_func(_jsdoc_base() . '_get_files');
-    $query = db_query("SELECT namespace.title AS namespace, resource.title AS filename, MAX(resource.vid) AS vid FROM {node} resource JOIN {jsdoc_objects} jo ON (resource.vid = jo.resource_vid) JOIN {node} obj ON (obj.vid = jo.vid) JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) JOIN {node} version ON (version.nid = jv.nid) JOIN {node} namespace ON (namespace.nid = jv.project) WHERE version.title = 'HEAD' GROUP BY BINARY namespace.title, BINARY resource.title");
+    $query = db_query("SELECT namespace.title AS namespace, resource.title AS filename, MAX(resource.vid) AS vid FROM {node} resource JOIN {jsdoc_objects} jo ON (resource.vid = jo.resource_vid) JOIN {node} obj ON (obj.vid = jo.vid) JOIN {jsdoc_versions} jv ON (jv.nid = jo.version) JOIN {node} version ON (version.nid = jv.nid) JOIN {node} namespace ON (namespace.nid = jv.project) WHERE version.title = 'HEAD' AND jo.used != -1 GROUP BY BINARY namespace.title, BINARY resource.title");
     while ($result = db_fetch_object($query)) {
       $found = false;
       foreach ($current_files as $current_file) {
@@ -806,12 +806,19 @@ function jsdoc_help($section = '') {
 // =====
 
 function jsdoc_manage($edit = array()) {
+  // If the first parse has run, all items in the DB have new = 1;
+  $query = db_query("SELECT 1 FROM {jsdoc_objects} WHERE new != 1");
+  if (!db_num_rows($query)) {
+    db_query("UPDATE {jsdoc_objects} SET new = 0");
+  }
+
   $header = array('Variable', 'Project', 'Resource', 'New', 'Deleted or Renamed');
 
+  //_drupal_add_js('../dojo/dojo.js', 'module', 'header', false, true);
   _drupal_add_js(drupal_get_path('module', 'jsdoc') . '/jsdoc.js', 'module', 'header', false, true);
 
   // Objects
-  $query = db_query("SELECT j.nid, j.vid, j.used, j.new, j.version FROM {jsdoc_objects} j INNER JOIN {node} n ON (n.vid = j.vid) WHERE j.used = 0 OR j.new = 1 ORDER BY n.title");
+  $query = db_query("SELECT j.nid, j.vid, j.used, j.new, j.version FROM {jsdoc_objects} j INNER JOIN {node} n ON (n.vid = j.vid) INNER JOIN {node} n2 ON (n2.vid = j.resource_vid) WHERE j.used = 0 OR j.new = 1 ORDER BY j.version, n2.title, n.title");
   while ($object = db_fetch_object($query)) {
     $node = _jsdoc_node_load($object->nid, $object->vid);
     $project = jsdoc_get_project($node);
@@ -820,10 +827,10 @@ function jsdoc_manage($edit = array()) {
     $new = '';
     $renamed = '';
     if ($object->new) {
-      $new = "<input type=\"checkbox\" value=\"{$project->title}|{$node->title}|{$node->nid}|{$node->vid}\" checked=\"checked\" />";
+      $new = "<input type=\"checkbox\" name=\"new[{$project->title}][{$node->nid}][{$node->vid}]\" value=\"{$project->title}|{$resource->title}|{$node->title}|{$node->nid}|{$node->vid}\" checked=\"checked\" />";
     }
     else {
-      $renamed = "<select name=\"object[{$project->title}][{$node->nid}][{$node->vid}]\"><option value=\"\">Deleted</option></select>";
+      $renamed = "<select name=\"modified[{$project->title}][{$node->nid}][{$node->vid}]\"><option value=\"\">Deleted</option></select>";
     }
 
     $rows[] = array($node->title, jsdoc_get_project($node)->title, theme('jsdoc_resource_source_link', jsdoc_get_project($resource)->title, $resource->title), $new, $renamed);
@@ -835,7 +842,7 @@ function jsdoc_manage($edit = array()) {
 
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Next')
+    '#value' => t('Done')
   );
 
   return $form;
@@ -843,12 +850,12 @@ function jsdoc_manage($edit = array()) {
 
 function jsdoc_manage_submit($form_id, $form) {
   if ($form_id == 'jsdoc_manage') {
-    foreach ($_POST['object'] as $projects) {
+    foreach ($_POST['modified'] as $projects) {
       foreach ($projects as $nid => $vids) {
         foreach ($vids as $vid => $props) {
           if (!$props) {
             $node = _jsdoc_node_load($nid, $vid);
-            db_query("UPDATE {jsdoc_objects} SET used = -1 WHERE nid = %d AND vid = %d", $nid, $vid);
+            db_query("UPDATE {jsdoc_objects} SET used = -1, new = 0 WHERE nid = %d AND vid = %d", $nid, $vid);
             $node->status = 0;
             node_save($node);
           }
@@ -859,57 +866,63 @@ function jsdoc_manage_submit($form_id, $form) {
             $node = _jsdoc_node_load($nid, $vid);
             $move_node = _jsdoc_node_load($move_nid, $move_vid);
 
-            if ($type == 'objects') {
-              $node->revision = 1;
-              $node->title = $move_node->title;
-              node_save($node);
+            $node->revision = 1;
+            $node->title = $move_node->title;
+            node_save($node);
 
-              jsdoc_load_children($move_node);
-              $chains = array();
-              foreach ($move_node->jsdoc_chains as $subtype => $chain) {
-                $chains[$subtype] = array_keys($chain);
-              }
-              $mixins = array();
-              foreach ($move_node->jsdoc_mixins as $subtype => $mixin) {
-                if (!$subtype) {
-                  $subtype = 'normal';
-                }
-                $mixins[$subtype] = array_keys($mixin);
-              }
-              _jsdoc_object_get_or_create(
-                jsdoc_get_project($move_node)->title,
-                $move_node->title,
-                $move_node->teaser,
-                $move_node->body,
-                _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid),
-                _jsdoc_node_load($node->jsdoc_provide, $node->jsdoc_provide_nid),
-                $move_node->jsdoc_private,
-                $move_node->jsdoc_private_parent,
-                $move_node->jsdoc_initialized,
-                $move_node->jsdoc_classlike,
-                $move_node->jsdoc_type,
-                $move_node->jsdoc_returns,
-                $move_node->jsdoc_return_summary,
-                $move_node->jsdoc_source,
-                $move_node->jsdoc_parameters,
-                $move_node->jsdoc_examples,
-                $move_node->jsdoc_aliases->title,
-                $move_node->jsdoc_instance->title,
-                $move_node->jsdoc_prototype->title,
-                $chains,
-                $mixins
-              );
-              db_query("UPDATE {jsdoc_objects} SET resource_nid = %d, resource_vid = %d, provide_nid = %d, provide_vid = %d WHERE vid = %d", $move_node->jsdoc_resource, $move_node->jsdoc_resource_vid, $move_node->jsdoc_provide, $move_node->jsdoc_provide_vid, $node->nid);
+            jsdoc_get_children($move_node);
+            $chains = array();
+            foreach ($move_node->jsdoc_chains as $subtype => $chain) {
+              $chains[$subtype] = array_keys($chain);
             }
+            $mixins = array();
+            foreach ($move_node->jsdoc_mixins as $subtype => $mixin) {
+              if (!$subtype) {
+                $subtype = 'normal';
+              }
+              $mixins[$subtype] = array_keys($mixin);
+            }
+            _jsdoc_object_get_or_create(
+              jsdoc_get_project($move_node)->title,
+              $move_node->title,
+              $move_node->teaser,
+              $move_node->body,
+              _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid),
+              _jsdoc_node_load($node->jsdoc_provide, $node->jsdoc_provide_nid),
+              $move_node->jsdoc_private,
+              $move_node->jsdoc_private_parent,
+              $move_node->jsdoc_initialized,
+              $move_node->jsdoc_classlike,
+              $move_node->jsdoc_type,
+              $move_node->jsdoc_returns,
+              $move_node->jsdoc_return_summary,
+              $move_node->jsdoc_source,
+              $move_node->jsdoc_parameters,
+              $move_node->jsdoc_examples,
+              $move_node->jsdoc_aliases->title,
+              $move_node->jsdoc_instance->title,
+              $move_node->jsdoc_prototype->title,
+              $chains,
+              $mixins
+            );
+            db_query("UPDATE {jsdoc_objects} SET resource_nid = %d, resource_vid = %d, provide_nid = %d, provide_vid = %d WHERE vid = %d", $move_node->jsdoc_resource, $move_node->jsdoc_resource_vid, $move_node->jsdoc_provide, $move_node->jsdoc_provide_vid, $node->nid);
 
             node_delete($move_node->nid);
           }
         }
       }
     }
+    foreach ($_POST['new'] as $projects) {
+      foreach ($projects as $nid => $vids) {
+        foreach ($vids as $vid => $isnew) {
+          if ($isnew) {
+            db_query("UPDATE {jsdoc_objects} SET new = 0 WHERE vid = %d", $vid);
+          }
+        }
+      }
+    }
   }
 
-  db_query("UPDATE {jsdoc_objects} SET new = 0");
   drupal_goto('');
 }
 
@@ -1798,7 +1811,7 @@ function jsdoc_get_children(&$node) {
 
   if ($node->type == "jsdoc_variable") {
     // Find all objects joined normally to this object,
-    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' AND jo.version IN (%s) AND jo.used != -1 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, implode(', ', $version_nids));
+    $query = db_query("SELECT n.title FROM {jsdoc_variable_hierarchy} j JOIN {jsdoc_objects} jo ON (jo.vid = j.vid) JOIN {node_revisions} n ON (n.vid = j.vid) WHERE j.parent_vid = %d AND j.type = 'normal' AND jo.version IN (%s) AND jo.used != -1 GROUP BY BINARY n.title ORDER BY n.title", $node->vid, implode(',', $version_nids));
     $node->jsdoc_variables = array();
     while ($object = db_fetch_object($query)) {
       $object = jsdoc_object_node_load($object->title, jsdoc_get_project($node), jsdoc_get_version($node));
@@ -1807,7 +1820,7 @@ function jsdoc_get_children(&$node) {
     uksort($node->jsdoc_variables, 'strnatcasecmp');
   }
   elseif ($node->type == "jsdoc_object") {
-    $query = db_query("SELECT j.type, j.subtype, nr.nid, nr.vid FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE jo.used != -1 AND nr2.title = '%s' AND BINARY nr2.title = '%s' AND j.version IN (%s) GROUP BY nr.nid, j.type, j.subtype", $node->title, $node->title, implode(', ', $version_nids));
+    $query = db_query("SELECT j.type, j.subtype, nr.nid, nr.vid FROM {jsdoc_variable_hierarchy} j JOIN {node_revisions} nr ON (nr.vid = j.vid) JOIN {node_revisions} nr2 ON (nr2.vid = j.parent_vid) JOIN {jsdoc_objects} jo ON (jo.vid = nr.vid) WHERE jo.used != -1 AND nr2.title = '%s' AND BINARY nr2.title = '%s' AND j.version IN (%s) GROUP BY nr.nid, j.type, j.subtype", $node->title, $node->title, implode(',', $version_nids));
     while ($join = db_fetch_object($query)) {
       $object = _jsdoc_node_load($join->nid, $join->vid);
       if (!$object->jsdoc_used) {
@@ -2102,8 +2115,17 @@ function jsdoc_object_nodes_load($name, $project=false, $version=false, $resourc
     $name_override = 'Integer';
     $name = 'Number';
   }
+  elseif ($lower_name == 'float' || $lower_name == 'decimal') {
+    $override_name = true;
+    $name_override = ucfirst($lower_name);
+    $name = 'Number';
+  }
 
   $global_vars = array('Array', 'Boolean', 'Date', 'Error', 'Function', 'Number', 'Object', 'RegExp', 'String');
+  $lower_global_vars = array('array', 'boolean', 'date', 'error', 'function', 'number', 'object', 'regexp', 'string');
+  if (($pos = array_search($lower_name, $lower_global_vars)) !== false) {
+    $name = $global_vars[$pos];
+  }
 
   if (in_array($name, $global_vars)) {
     return array((object)array(
@@ -2111,7 +2133,7 @@ function jsdoc_object_nodes_load($name, $project=false, $version=false, $resourc
       'jsdoc_url' => 'http://developer.mozilla.org/en/docs/Core_JavaScript_1.5_Reference:Global_Objects:' . $name
     ));
   }
-  elseif ($name == 'window') {
+  elseif ($lower_name == 'window') {
     return array((object)array(
       'title' => $name,
       'jsdoc_url' => 'http://developer.mozilla.org/en/docs/DOM:window'
@@ -2341,7 +2363,7 @@ function jsdoc_ide($ide) {
             foreach ($class_mixin as $scoped_mixin) {
               $mixin = $mixins->appendChild($document->createElement('mixin'));
               $mixin->setAttribute('scope', $scoped_mixin[0]);
-              $mixin->setAttribute($type, $scoped_mixin[1]);
+              $mixin->setAttribute('type', $scoped_mixin[1]);
             }
           }
 
@@ -2360,7 +2382,7 @@ function jsdoc_ide($ide) {
                   $methods[] = $element = $document->createElement('method');
 
                   _jsdoc_ide_build_parameters(jsdoc_get_parameters($child), $document, $element);
-                  if ($types = jsdoc_get_return_types($child)) {
+                  if ($types = _jsdoc_ide_build_type(jsdoc_get_return_types($child))) {
                     $return_types = $element->appendChild($document->createElement('return-types'));
                     foreach ($types as $return_type) {
                       $return_types->appendChild($document->createElement('return-type'))->setAttribute('type', $return_type);
@@ -2369,8 +2391,8 @@ function jsdoc_ide($ide) {
                 }
                 elseif (!jsdoc_is_namespace($child) && jsdoc_get_type($child) != 'Constructor') {
                   $properties[] = $element = $document->createElement('property');
-                  $child_type = jsdoc_get_type($child);
-                  $element->setAttribute('type', ($child_type) ? str_replace(array('?', '...'), array('', ''), $child_type) : 'Object');
+                  $child_type = implode('|', _jsdoc_ide_build_type(jsdoc_get_type($child), 'Object'));
+                  $element->setAttribute('type', $child_type);
                   $element->setAttribute('access', 'read-write');
                 }
 
@@ -2417,12 +2439,43 @@ function _jsdoc_ide_build_parameters($parameters, $document, &$element) {
   foreach ($parameters as $parameter) {
     $parameter_element = $parameters_element->appendChild($document->createElement('parameter'));
     $parameter_element->setAttribute('name', $parameter['name']);
-    $parameter_element->setAttribute('type', ($parameter['type']) ? $parameter['type'] : 'Object');
+    $parameter_element->setAttribute('type', _jsdoc_ide_build_type($parameter['type'], 'Object'));
     $parameter_element->setAttribute('usage', ($parameter['optional']) ? 'optional' : (($parameter['repeating']) ? 'one-or-more' : 'required'));
     if ($parameter['summary']) {
       $parameter_element->appendChild($document->createElement('description'))->appendChild($document->createTextNode($parameter['summary']));
     }
   }
+}
+
+function _jsdoc_ide_build_type($types, $default=null) {
+  if (!is_array($types)) {
+    if (is_string($types)) {
+      $types = preg_split('%\s*\|+\s*%', $types);
+    }
+    else {
+      return array();
+    }
+  }
+
+  $return_types = array();
+  foreach ($types as $i => $type) {
+    $node = jsdoc_object_node_load($type);
+    if (!empty($node->title)) {
+      $type = $node->title;
+    }
+    if (preg_match('%^[a-zA-Z_.$][\w_.$]*(\[\])?$%', $type)) {
+      if ($type == 'Integer' || $type == 'Float' || $type == 'Decimal') {
+        $type = 'Number';
+      }
+      $return_types[] = $type;
+    }
+  }
+
+  if (empty($return_types) && !is_null($default)) {
+    $return_types[] = $default;
+  }
+
+  return $return_types;
 }
 
 /**
@@ -3611,7 +3664,7 @@ function _jsdoc_get_tree($environments, $parent = 0, $depth = -1, $visited=array
   if (!isset($parents)) {
     $parents = array();
 
-    $result = db_query("SELECT j.vid, j.nid, j.parent_vid, j.parent_nid, nr.title AS name FROM {jsdoc_resource_hierarchy} j JOIN {node_revisions} nr ON (j.vid = nr.vid) WHERE j.tid IN (%s) GROUP BY j.vid, j.parent_vid, BINARY nr.title", implode(', ', $environments));
+    $result = db_query("SELECT j.vid, j.nid, j.parent_vid, j.parent_nid, nr.title AS name FROM {jsdoc_resource_hierarchy} j JOIN {node_revisions} nr ON (j.vid = nr.vid) WHERE j.tid IN (%s) GROUP BY j.vid, j.parent_vid, BINARY nr.title", implode(',', $environments));
     while ($term = db_fetch_object($result)) {
       if ($term->parent_vid) {
         $children[$term->parent_nid][] = $term->nid;
