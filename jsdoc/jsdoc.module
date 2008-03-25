@@ -850,73 +850,77 @@ function jsdoc_manage($edit = array()) {
 
 function jsdoc_manage_submit($form_id, $form) {
   if ($form_id == 'jsdoc_manage') {
-    foreach ($_POST['modified'] as $projects) {
-      foreach ($projects as $nid => $vids) {
-        foreach ($vids as $vid => $props) {
-          if (!$props) {
-            $node = _jsdoc_node_load($nid, $vid);
-            db_query("UPDATE {jsdoc_objects} SET used = -1, new = 0 WHERE nid = %d AND vid = %d", $nid, $vid);
-            $node->status = 0;
-            node_save($node);
-          }
-          else {
-            // Delete the new node, update the old node.
-            list($move_nid, $move_vid) = explode('_', $props);
-
-            $node = _jsdoc_node_load($nid, $vid);
-            $move_node = _jsdoc_node_load($move_nid, $move_vid);
-
-            $node->revision = 1;
-            $node->title = $move_node->title;
-            node_save($node);
-
-            jsdoc_get_children($move_node);
-            $chains = array();
-            foreach ($move_node->jsdoc_chains as $subtype => $chain) {
-              $chains[$subtype] = array_keys($chain);
+    if ($_POST['modified']) {
+      foreach ($_POST['modified'] as $projects) {
+        foreach ($projects as $nid => $vids) {
+          foreach ($vids as $vid => $props) {
+            if (!$props) {
+              $node = _jsdoc_node_load($nid, $vid);
+              db_query("UPDATE {jsdoc_objects} SET used = -1, new = 0 WHERE nid = %d AND vid = %d", $nid, $vid);
+              $node->status = 0;
+              node_save($node);
             }
-            $mixins = array();
-            foreach ($move_node->jsdoc_mixins as $subtype => $mixin) {
-              if (!$subtype) {
-                $subtype = 'normal';
+            else {
+              // Delete the new node, update the old node.
+              list($move_nid, $move_vid) = explode('_', $props);
+
+              $node = _jsdoc_node_load($nid, $vid);
+              $move_node = _jsdoc_node_load($move_nid, $move_vid);
+
+              $node->revision = 1;
+              $node->title = $move_node->title;
+              node_save($node);
+
+              jsdoc_get_children($move_node);
+              $chains = array();
+              foreach ($move_node->jsdoc_chains as $subtype => $chain) {
+                $chains[$subtype] = array_keys($chain);
               }
-              $mixins[$subtype] = array_keys($mixin);
-            }
-            _jsdoc_object_get_or_create(
-              jsdoc_get_project($move_node)->title,
-              $move_node->title,
-              $move_node->teaser,
-              $move_node->body,
-              _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid),
-              _jsdoc_node_load($node->jsdoc_provide, $node->jsdoc_provide_nid),
-              $move_node->jsdoc_private,
-              $move_node->jsdoc_private_parent,
-              $move_node->jsdoc_initialized,
-              $move_node->jsdoc_classlike,
-              $move_node->jsdoc_type,
-              $move_node->jsdoc_returns,
-              $move_node->jsdoc_return_summary,
-              $move_node->jsdoc_source,
-              $move_node->jsdoc_parameters,
-              $move_node->jsdoc_examples,
-              $move_node->jsdoc_aliases->title,
-              $move_node->jsdoc_instance->title,
-              $move_node->jsdoc_prototype->title,
-              $chains,
-              $mixins
-            );
-            db_query("UPDATE {jsdoc_objects} SET resource_nid = %d, resource_vid = %d, provide_nid = %d, provide_vid = %d WHERE vid = %d", $move_node->jsdoc_resource, $move_node->jsdoc_resource_vid, $move_node->jsdoc_provide, $move_node->jsdoc_provide_vid, $node->nid);
+              $mixins = array();
+              foreach ($move_node->jsdoc_mixins as $subtype => $mixin) {
+                if (!$subtype) {
+                  $subtype = 'normal';
+                }
+                $mixins[$subtype] = array_keys($mixin);
+              }
+              _jsdoc_object_get_or_create(
+                jsdoc_get_project($move_node)->title,
+                $move_node->title,
+                $move_node->teaser,
+                $move_node->body,
+                _jsdoc_node_load($node->jsdoc_resource, $node->jsdoc_resource_vid),
+                _jsdoc_node_load($node->jsdoc_provide, $node->jsdoc_provide_nid),
+                $move_node->jsdoc_private,
+                $move_node->jsdoc_private_parent,
+                $move_node->jsdoc_initialized,
+                $move_node->jsdoc_classlike,
+                $move_node->jsdoc_type,
+                $move_node->jsdoc_returns,
+                $move_node->jsdoc_return_summary,
+                $move_node->jsdoc_source,
+                $move_node->jsdoc_parameters,
+                $move_node->jsdoc_examples,
+                $move_node->jsdoc_aliases->title,
+                $move_node->jsdoc_instance->title,
+                $move_node->jsdoc_prototype->title,
+                $chains,
+                $mixins
+              );
+              db_query("UPDATE {jsdoc_objects} SET resource_nid = %d, resource_vid = %d, provide_nid = %d, provide_vid = %d WHERE vid = %d", $move_node->jsdoc_resource, $move_node->jsdoc_resource_vid, $move_node->jsdoc_provide, $move_node->jsdoc_provide_vid, $node->nid);
 
-            node_delete($move_node->nid);
+              node_delete($move_node->nid);
+            }
           }
         }
       }
     }
-    foreach ($_POST['new'] as $projects) {
-      foreach ($projects as $nid => $vids) {
-        foreach ($vids as $vid => $isnew) {
-          if ($isnew) {
-            db_query("UPDATE {jsdoc_objects} SET new = 0 WHERE vid = %d", $vid);
+    if ($_POST['new']) {
+      foreach ($_POST['new'] as $projects) {
+        foreach ($projects as $nid => $vids) {
+          foreach ($vids as $vid => $isnew) {
+            if ($isnew) {
+              db_query("UPDATE {jsdoc_objects} SET new = 0 WHERE vid = %d", $vid);
+            }
           }
         }
       }
@@ -2283,10 +2287,8 @@ function jsdoc_parameter_weight_sort($a, $b){
 /**
  * Path: jsdoc/ide
  */
-function jsdoc_ide($ide) {
+function jsdoc_ide($ide, $download=false) {
   if ($ide == 'aptana') {
-    header('Content-type: text/plain');
-
     $document = new DomDocument();
     $document->encoding = 'utf-8';
     $document->standalone = true;
@@ -2382,7 +2384,7 @@ function jsdoc_ide($ide) {
                   $methods[] = $element = $document->createElement('method');
 
                   _jsdoc_ide_build_parameters(jsdoc_get_parameters($child), $document, $element);
-                  if ($types = _jsdoc_ide_build_type(jsdoc_get_return_types($child))) {
+                  if ($types = _jsdoc_ide_build_types(jsdoc_get_return_types($child), 'Object')) {
                     $return_types = $element->appendChild($document->createElement('return-types'));
                     foreach ($types as $return_type) {
                       $return_types->appendChild($document->createElement('return-type'))->setAttribute('type', $return_type);
@@ -2391,7 +2393,7 @@ function jsdoc_ide($ide) {
                 }
                 elseif (!jsdoc_is_namespace($child) && jsdoc_get_type($child) != 'Constructor') {
                   $properties[] = $element = $document->createElement('property');
-                  $child_type = implode('|', _jsdoc_ide_build_type(jsdoc_get_type($child), 'Object'));
+                  $child_type = implode('|', _jsdoc_ide_build_types(jsdoc_get_type($child), 'Object'));
                   $element->setAttribute('type', $child_type);
                   $element->setAttribute('access', 'read-write');
                 }
@@ -2439,7 +2441,7 @@ function _jsdoc_ide_build_parameters($parameters, $document, &$element) {
   foreach ($parameters as $parameter) {
     $parameter_element = $parameters_element->appendChild($document->createElement('parameter'));
     $parameter_element->setAttribute('name', $parameter['name']);
-    $parameter_element->setAttribute('type', _jsdoc_ide_build_type($parameter['type'], 'Object'));
+    $parameter_element->setAttribute('type', implode('|', _jsdoc_ide_build_types($parameter['type'], 'Object')));
     $parameter_element->setAttribute('usage', ($parameter['optional']) ? 'optional' : (($parameter['repeating']) ? 'one-or-more' : 'required'));
     if ($parameter['summary']) {
       $parameter_element->appendChild($document->createElement('description'))->appendChild($document->createTextNode($parameter['summary']));
@@ -2447,10 +2449,17 @@ function _jsdoc_ide_build_parameters($parameters, $document, &$element) {
   }
 }
 
-function _jsdoc_ide_build_type($types, $default=null) {
+function _jsdoc_ide_build_types($types, $default=null) {
   if (!is_array($types)) {
     if (is_string($types)) {
-      $types = preg_split('%\s*\|+\s*%', $types);
+      if(!$types){
+        if(!is_null($default)){
+          return array($default);
+        }
+        return array();
+      }else{
+        $types = preg_split('%\s*\|+\s*%', $types);
+      }
     }
     else {
       return array();
