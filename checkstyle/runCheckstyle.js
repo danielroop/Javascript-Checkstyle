@@ -39,14 +39,16 @@ if(arguments[0] == "help"){
 function checkstyle(){
 	
 	var dirs, i;
-	var reportFile = "./checkstyleData.js";
+	
+	var reportFile = kwArgs.reportFile || "checkstyleData.js";
 
+	reportFile = "./" + reportFile;
 	
 	if(kwArgs.files){
 		var files = kwArgs.files.split(" ");
 		
 		for(i = 0; i < files.length; i++){
-			checkstyleUtil.applyRules("../../" + files[i], fileUtil.readFile("../../" + files[i]));
+			checkstyleUtil.applyRules(files[i], fileUtil.readFile(files[i]));
 		}
 		if(checkstyleUtil.errors){
 			var errors = checkstyleUtil.serializeErrors();
@@ -62,12 +64,10 @@ function checkstyle(){
 	
 	if(kwArgs.dir){
 		dirs = [kwArgs.dir];
-	} else{
-		dirs = ["dojo", "dijit", "dojox"];
 	}
 	
 	for(i = 0; i < dirs.length; i++){
-		var fileList = fileUtil.getFilteredFileList("../../" + dirs[i], /\.js$/, true);
+		var fileList = fileUtil.getFilteredFileList(dirs[i], /\.js$/, true);
 		for(var j = 0; j < fileList.length; j++){
 			if(fileList[j].indexOf("/test") < 0
 				&& fileList[j].indexOf("/nls") < 0 
@@ -78,28 +78,6 @@ function checkstyle(){
 	}
 	var report = checkstyleUtil.generateReport();
 	fileUtil.saveUtf8File(reportFile, report);
-}
-
-function runCommit(){
-	var dirs = ["dojo", "dijit", "dojox"];
-	
-	var committedFiles = [];
-
-	for(var i = 0; i < dirs.length; i++){
-		var fileList = fileUtil.getFilteredFileList("../../" + dirs[i], /\.checkstyle.js$/, true);
-		
-		for(var j = 0; j < fileList.length; j++){
-			if(fileList[j].indexOf("/test") < 0
-				&& fileList[j].indexOf("/nls") < 0 
-				&& fileList[j].indexOf("/demos") < 0){
-				var fileName = fileList[j].substring(0, fileList[j].length - ".checkstyle.js".length);
-				fileUtil.saveUtf8File(fileName, fileUtil.readFile(fileList[j]));
-				fileUtil.deleteFile(fileList[j]);
-				committedFiles.push(fileName);
-			}
-		}
-	}
-	print("Committed checkstyle fixes for the following files:\n" + committedFiles.join("\n"));
 }
 
 //********* End checkstyle *********
