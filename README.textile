@@ -1,0 +1,7 @@
+h1. History
+
+Javscript-Checkstyle is a "fork" of dojo util.checkstyle.  They had all the right pieces in place to make a generic Javascript checkstyle application, but needed someone to take it the next step.
+
+h1. Plan
+
+The plan is to have a tool and tasks/plugins for [ant|http://ant.apache.org/] and [maven|http://maven.apache.org] that can be integrated into your build lifecycle similar to [phpcs|http://pear.php.net/package/PHP_CodeSniffer/redirected] and [checkstyle|http://checkstyle.sourceforge.net/].
