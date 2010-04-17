@@ -11,6 +11,6 @@ h1. Command Line Usage
 The following command line arguments are allowed
 
 ||Parameter||Default||Description||
-|files| n/a |A comma delimited list of filepaths to be loaded and checked.|
-|dir| n/a |A directory path (from the execution location) to loop over and run validation on|
-|reportFile|checkstleData.js|The path to the output file you want.|
+| files | n/a | A comma delimited list of filepaths to be loaded and checked. |
+| dir | n/a | A directory path (from the execution location) to loop over and run validation on |
+| reportFile | checkstleData.js |The path to the output file you want. |
