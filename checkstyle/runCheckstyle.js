@@ -1,11 +1,11 @@
 //Checkstyle script for Dojo
 var buildTimerStart = (new Date()).getTime();
 
-load("jslib/logger.js");
-load("jslib/fileUtil.js");
-load("jslib/buildUtil.js");
-load("checkstyleUtil.js");
-load("dojo-ruleset.js");
+load(java.lang.System.getProperty('JSCHECKSTYLE_HOME') + "jslib/logger.js");
+load(java.lang.System.getProperty('JSCHECKSTYLE_HOME') + "jslib/fileUtil.js");
+load(java.lang.System.getProperty('JSCHECKSTYLE_HOME') + "jslib/buildUtil.js");
+load(java.lang.System.getProperty('JSCHECKSTYLE_HOME') + "checkstyleUtil.js");
+load(java.lang.System.getProperty('JSCHECKSTYLE_HOME') + "dojo-ruleset.js");
 
 //*****************************************************************************
 
