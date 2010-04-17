@@ -5,6 +5,7 @@ load("jslib/logger.js");
 load("jslib/fileUtil.js");
 load("jslib/buildUtil.js");
 load("checkstyleUtil.js");
+load("dojo-ruleset.js");
 
 //*****************************************************************************
 
@@ -43,6 +44,24 @@ function checkstyle(){
 	var reportFile = kwArgs.reportFile || "checkstyleData.js";
 
 	reportFile = "./" + reportFile;
+
+	if(kwArgs.ruleSets){
+
+		var ruleSetsToMerge = [];
+		var ruleSetsParam = kwArgs.ruleSets.split(",");
+		
+		for (var i in ruleSetsParam) {
+			var ruleSetName = ruleSetsParam[i];
+			
+			if (!rulesets[ruleSetName]) throw Error("Rulesets do not exist for '" + ruleSetName + "'");
+
+			ruleSetsToMerge.push(rulesets[ruleSetName]);				
+		}
+		
+		checkstyleUtil.rules = checkstyleUtil.mergeRuleSets(ruleSetsToMerge);
+	} else {
+		checkstyleUtil.rules = checkstyleUtil.mergeRuleSets([rulesets['dojo']]);
+	}
 	
 	if(kwArgs.files){
 		var files = kwArgs.files.split(" ");
