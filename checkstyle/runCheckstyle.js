@@ -1,9 +1,9 @@
 //Checkstyle script for Dojo
 var buildTimerStart = (new Date()).getTime();
 
-load("../buildscripts/jslib/logger.js");
-load("../buildscripts/jslib/fileUtil.js");
-load("../buildscripts/jslib/buildUtil.js");
+load("jslib/logger.js");
+load("jslib/fileUtil.js");
+load("jslib/buildUtil.js");
 load("checkstyleUtil.js");
 
 //*****************************************************************************
