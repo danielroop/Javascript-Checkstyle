@@ -2,7 +2,7 @@ rulesets = {};
 
 checkstyleUtil = {
 	errors: [],
-	
+    test: [],
 	commentNames: ["summary", "description", "example", "tags", "this"]
 };
 

@@ -20,11 +20,7 @@ if(arguments[0] == "help"){
 		+ "checkstyle failOnError=true files=\"dojo/_base/Color.js dojo/back.js\"\n\t"
 		+ "To commit fixes made by the checkstyleReport.html tool, use\n\t\t"
 		+ "checkstyle commit");
-		
-} else if(arguments[0] == "commit"){
-	runCommit();
-} else{
-	
+} else{	
 	//Convert arguments to keyword arguments.
 	var kwArgs = buildUtil.makeBuildOptions(arguments);
 
@@ -45,6 +41,8 @@ function checkstyle(){
 
 	reportFile = "./" + reportFile;
 
+	if(kwArgs.ruleSets && kwArgs.ruleSetConfig) throw Error("Only one of the two configuration options are allowed 'rulSets' or 'ruleSetConfig'");
+
 	if(kwArgs.ruleSets){
 
 		var ruleSetsToMerge = [];
@@ -59,6 +57,8 @@ function checkstyle(){
 		}
 		
 		checkstyleUtil.rules = checkstyleUtil.mergeRuleSets(ruleSetsToMerge);
+	} else if (kwArgs.ruleSetConfig) {
+		load(kwArgs.ruleSetConfig);
 	} else {
 		checkstyleUtil.rules = checkstyleUtil.mergeRuleSets([rulesets['dojo']]);
 	}
