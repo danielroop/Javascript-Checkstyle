@@ -14,3 +14,5 @@ The following command line arguments are allowed
 | files | n/a | A comma delimited list of filepaths to be loaded and checked. |
 | dir | n/a | A directory path (from the execution location) to loop over and run validation on |
 | reportFile | checkstleData.js |The path to the output file you want. |
+| ruleSets| dojo | a comma (,) delimited list of predefined rulesets to execute against your code base. |
+| ruleSetConfig | n/a | the path to a .js file that will configure the rulesets and/or define your own custom rulesets.  If this is present ruleSets will be ignored.|
