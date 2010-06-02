@@ -2,20 +2,35 @@ rulesets = {};
 
 checkstyleUtil = {
 	errors: [],
+    rulesets: [],
+	rules: {},
 	commentNames: ["summary", "description", "example", "tags", "this"]
 };
 
-
-
-checkstyleUtil.mergeRuleSets = function(rulesets){
-	var newRuleSet = {};
+checkstyleUtil.setRulesets = function(rulesets){
+	this.rules = {};
 	
 	for (var i in rulesets) {
 		var ruleset = rulesets[i];
-		for (key in ruleset) { newRuleSet[key] = ruleset[key]; }	
+		for (key in ruleset) { this.rules[key] = ruleset[key]; }	
 	}
+}
 
-	return newRuleSet;
+checkstyleUtil.addRuleset = function(ruleset){
+	for (key in ruleset) { 
+		this.rules[key] = ruleset[key]; 
+	}	
+}
+
+checkstyleUtil.disableRule = function(){
+	print("Disable Rule");
+	
+	if (arguments.length == 1) {
+		print("Disable Rule: " + arguments[0]);
+		this.rules[arguments[0]] = function(filename, contents, comments){
+			return;
+		};
+	}
 }
 
 checkstyleUtil.applyRules = function(fileName, contents){
@@ -25,11 +40,11 @@ checkstyleUtil.applyRules = function(fileName, contents){
 	}
 	
 	// Mark all the characters that are in comments.
-	var comments = checkstyleUtil.getComments(contents);
-	
+	var comments = this.getComments(contents);
 	// Apply all the rules to the file
-	for(var ruleName in checkstyleUtil.rules){
-		checkstyleUtil.rules[ruleName](fileName, contents, comments);
+	for(var ruleName in this.rules){
+																	print("hello world: " + ruleName);
+		this.rules[ruleName](fileName, contents, comments);
 	}
 };
 
@@ -613,3 +628,6 @@ checkstyleUtil.generateReport = function(skipPrint){
 					
 	return "{ identifier: 'id', label:'file', items: [" + json.join(",\n") + "]}";
 };
+
+checkstyle = checkstyleUtil;
+$ = checkstyle;

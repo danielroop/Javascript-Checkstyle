@@ -196,7 +196,6 @@ buildUtil.DojoBuildOptions = {
 buildUtil.makeBuildOptions = function(/*Array*/scriptArgs){
 	//summary: constructs the build options by combining the scriptArgs with
 	//default build options and anything specified in a profile file.
-
 	var kwArgs = {}, param;
 
 	//Parse the command line arguments
