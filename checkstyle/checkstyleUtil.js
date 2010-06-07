@@ -23,10 +23,7 @@ checkstyleUtil.addRuleset = function(ruleset){
 }
 
 checkstyleUtil.disableRule = function(){
-	print("Disable Rule");
-	
 	if (arguments.length == 1) {
-		print("Disable Rule: " + arguments[0]);
 		this.rules[arguments[0]] = function(filename, contents, comments){
 			return;
 		};
@@ -43,7 +40,6 @@ checkstyleUtil.applyRules = function(fileName, contents){
 	var comments = this.getComments(contents);
 	// Apply all the rules to the file
 	for(var ruleName in this.rules){
-																	print("hello world: " + ruleName);
 		this.rules[ruleName](fileName, contents, comments);
 	}
 };
@@ -194,6 +190,22 @@ checkstyleUtil.getComments = function(contents){
 					marker = UNMARK;
 				}
 				break;
+			case "\\":
+			    if(marker == DOUBLE_QUOTE) {
+					if(contents[i + 1] == '"'){
+						skip = true;
+					} else if(contents[i + 1] == '\\') {
+    					skip = true;
+					}
+    				
+		        } else if(marker == SINGLE_QUOTE) {
+					if(contents[i + 1] == "'"){
+						skip = true;
+					} else if(contents[i + 1] == '\\') {
+    					skip = true;
+					}
+	            } else
+			    break;
 		
 		}
 		if (marker != null) {	
@@ -283,6 +295,23 @@ checkstyleUtil.createSimpleSearch = function(token, message){
 	};
 };
 
+// Creates a regex function that searches for the token, and 
+// adds an error if it is found
+checkstyleUtil.createRegexSearch = function(regex, message){
+	return function(fileName, contents, comments){
+		var idx = contents.search(regex);
+
+		while(idx > -1){
+			if(!comments[idx]){
+				checkstyleUtil.addError(message, fileName, contents, idx);
+			}
+    		contents = contents.substr(idx+1);
+    		
+    		idx = contents.search(regex);
+		}
+	};
+};
+
 // Creates a function that fails a test if the given token
 // does not have a space to the left and right.
 checkstyleUtil.createSpaceWrappedSearch = function(token, message){
@@ -321,20 +350,6 @@ checkstyleUtil.rules = {
 
 };
 
-var noSpaceAfter = ["catch","do","finally","for","if","switch","try","while","with"];
-
-// Add checks for all the elements that are not allowed to have a space after them.
-checkstyleUtil.createNoSpaceAfterFunction = function(name){
-	checkstyleUtil.rules["noSpaceAfter" + noSpaceAfter[i] + "1"] = 
-		checkstyleUtil.createSimpleSearch(" " + name +" ", "\" " + name + " \" cannot be followed by a space");
-	checkstyleUtil.rules["noSpaceAfter" + noSpaceAfter[i] + "2"] = 
-		checkstyleUtil.createSimpleSearch("\t" + name +" ", "\" " + name + " \" cannot be followed by a space");
-}
-
-for(var i = 0; i < noSpaceAfter.length; i++){
-	checkstyleUtil.createNoSpaceAfterFunction(noSpaceAfter[i]);
-}
-
 checkstyleUtil.clear = function(){
 	checkstyleUtil.errors = [];
 }
@@ -346,136 +361,6 @@ checkstyleUtil.serializeErrors = function(){
 		buf.push(errs[i].file + ":" + errs[i].line + " - " + errs[i].message);
 	}
 	return buf.join("\n");
-}
-
-checkstyleUtil.makeSimpleFixes = function(contents){
-	
-	var comments = checkstyleUtil.getComments(contents);
-	for(var i = 0; i < noSpaceAfter.length; i++){
-		contents = checkstyleUtil.fixSpaceAfter(contents, noSpaceAfter[i], comments);
-	}
-	/*
-	contents = contents.split("    ").join("\t")
-				.split("  ").join("\t")
-				.split(") {").join("){")
-				.split("\tif (").join("\tif(")
-				.split("} else").join("}else")
-				.split("}\telse").join("}else")
-				.split("}else {").join("}else{")
-				.split("\twhile (").join("\twhile(")
-				.split("\tfor (").join("\tfor(")
-				.split("\tswitch (").join("\tswitch(");
-	*/
-	
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "=  ", "= ", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "    ", "\t", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "  ", "\t", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "\tif (", "\tif(", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "} else", "}else", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "}\telse", "}else", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "}else {", "}else{", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "\twhile (", "\twhile(", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "\tfor (", "\tfor(", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "\tswitch (", "\tswitch(", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, ") {", "){", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "//summary:", "// summary:", {});
-	contents = checkstyleUtil.replaceAllExceptComments(contents, "//description:", "// description:", {});
-	comments = checkstyleUtil.getComments(contents);
-	
-	contents = checkstyleUtil.fixTrailingWhitespace(contents);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.fixSpaceBeforeAndAfter(contents, "===", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.fixSpaceBeforeAndAfter(contents, "!==", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.fixSpaceBeforeAndAfter(contents, "==", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.fixSpaceBeforeAndAfter(contents, "||", comments);
-	comments = checkstyleUtil.getComments(contents);
-	contents = checkstyleUtil.fixSpaceBeforeAndAfter(contents, "&&", comments);
-	comments = checkstyleUtil.getComments(contents);
-	
-	contents = checkstyleUtil.fixCommentNames(contents);
-	
-	
-	
-	return contents;
-}
-
-checkstyleUtil.fixCommentNames = function(contents){
-	var commentNames = checkstyleUtil.commentNames;
-	var i;
-	
-	for(i = 0; i < commentNames.length; i++){
-		contents = checkstyleUtil.replaceAllExceptComments(contents, "//\t" + commentNames[i] + ":", "// " + commentNames[i] + ":", {});
-	}
-	
-	for(i = 0; i < commentNames.length; i++){
-		var commentName = commentNames[i];
-		var searchToken = "// " + commentName + ":";
-		var idx = contents.indexOf(searchToken);
-		
-		
-		while(idx > -1){
-			// If the comment name is not followed immediately by a new line, then insert a new line,
-			// two forward slashes and two tabs.
-			if(!checkstyleUtil.isEOL(contents, idx + commentName.length + 4)){
-				// Calculate how many tabs to put before the "//"
-				
-				var tabs = "";
-				var search = idx - 1;
-				while(!checkstyleUtil.isEOL(contents, search)){
-					tabs += contents.charAt(search);
-					search--;
-				}
-				var insertPos = idx + commentName.length + 4;
-				if(contents.charAt(insertPos) == " " || contents.charAt(insertPos) == "\t"){
-					contents = checkstyleUtil.deleteChar(contents, insertPos);
-				}
-				
-				contents = checkstyleUtil.insertChar(contents, "\n" + tabs + "//\t\t", idx + commentName.length + 4);
-			
-			}
-			idx = contents.indexOf(searchToken, idx + commentName.length);
-		}
-	}
-	return contents;
-}
-
-
-checkstyleUtil.replaceAllExceptComments = function(contents, old, newStr, comments){
-	var idx = contents.indexOf(old);
-	var toRemove = [];
-	
-	while(idx > -1){
-		if(!comments[idx]){
-			toRemove.push(idx);		
-		}
-
-		idx = contents.indexOf(old, idx + old.length);
-	}
-	
-	// Process the string backwards so we don't have to recompute the comments each time.
-	for(var i = toRemove.length - 1; i > -1; i--){
-		idx = toRemove[i];
-		if(!comments[idx]){
-			contents = contents.substring(0, idx)
-					+ newStr
-					+ contents.substring(idx + old.length, contents.length);
-		}
-	}
-	return contents;
 }
 
 checkstyleUtil.insertChar = function(contents, ch, pos){

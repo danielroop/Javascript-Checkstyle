@@ -162,6 +162,18 @@
 	
 		"dojo-spacesAroundEquals": $.createSpaceWrappedSearch("==", "The equals sign should be preceded and followed by a space"),
 		"dojo-spacesAroundOr": $.createSpaceWrappedSearch("||", "The || sign should be preceded and followed by a space"),
-		"dojo-spacesAroundAnd": $.createSpaceWrappedSearch("&&", "The && sign should be preceded and followed by a space")
+		"dojo-spacesAroundAnd": $.createSpaceWrappedSearch("&&", "The && sign should be preceded and followed by a space"),
 	};
+	
+	var noSpaceAfter = ["catch","do","finally","for","if","switch","try","while","with"];
+
+	// Add checks for all the elements that are not allowed to have a space after them.
+	$.createNoSpaceAfterFunction = function(name){
+		$.rulesets['dojo']["dojo-noSpaceAfter" + noSpaceAfter[i] + "1"] = checkstyleUtil.createSimpleSearch(" " + name +" ", "\" " + name + " \" cannot be followed by a space");
+		$.rulesets['dojo']["dojo-noSpaceAfter" + noSpaceAfter[i] + "2"] = checkstyleUtil.createSimpleSearch("\t" + name +" ", "\" " + name + " \" cannot be followed by a space");
+	}
+	
+	for(var i = 0; i < noSpaceAfter.length; i++){
+		$.createNoSpaceAfterFunction(noSpaceAfter[i]);
+	}
 })(checkstyle);

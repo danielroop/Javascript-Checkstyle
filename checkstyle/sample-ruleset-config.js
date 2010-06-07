@@ -10,12 +10,12 @@
 */
 
 (function($) {
-	$.addRuleset($.rulesets["dojo"]);
+	$.addRuleset($.rulesets["crockford"]);
 
 	$.disableRule('dojo-useTabs');
 
 	$.addRuleset({
-			"useSpaces": checkstyleUtil.createSimpleSearch("\t", "Spaces should be used in place of tabs"),
+			//"useSpaces": checkstyleUtil.createSimpleSearch("\t", "Spaces should be used in place of tabs"),
 			"dojo-useTabs": $.disableRule
 	});
 })(checkstyle);

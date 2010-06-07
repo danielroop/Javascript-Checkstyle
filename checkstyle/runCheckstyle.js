@@ -9,6 +9,8 @@ load(checkstyleDir + "jslib/buildUtil.js");
 
 load(checkstyleDir + "checkstyleUtil.js");
 load(checkstyleDir + "dojo-ruleset.js");
+load(checkstyleDir + "crockford-ruleset.js");
+
 
 //*****************************************************************************
 (function($, arguments) { 
